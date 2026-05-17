@@ -1,7 +1,8 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
-from xgboost import XGBClassifier
+from xgboost import XGBRegressor
+# xgbregressor for numbers, xgbclassifier for classifications
 
 # machine learning first study
 
@@ -16,3 +17,27 @@ print(ds.head())
 # x are the inputs that the model will learn from and y is the answer that the model will try to predict
 x = ds[["horsepower", "mileage_miles"]]
 y = ds["price_usd"]
+
+# split dataset into two categories, train value and test value
+# 80% for training, 20% for testing - optimal
+x_train, x_test, y_train, y_test = train_test_split(
+    x, y, test_size=0.2, random_state=42
+)
+
+# defining the model
+model = XGBRegressor(
+    n_estimators=100,
+    learning_rate=0.1,
+    max_depth=3,
+    random_state=42,
+    eval_metric="logloss",
+)
+
+# train the model
+model.fit(x_train, y_train)
+print("Training done :>")
+
+# my input to predict the price
+x_pred = [[200, 15000]]
+prediction = model.predict(x_pred)
+print(f"\nPredicted price: {prediction}")
