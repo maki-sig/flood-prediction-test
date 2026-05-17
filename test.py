@@ -1,4 +1,5 @@
 import pandas as pd
+import joblib
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from xgboost import XGBRegressor
@@ -36,6 +37,10 @@ model = XGBRegressor(
 # train the model
 model.fit(x_train, y_train)
 print("Training done :>")
+
+# to save model once
+joblib.dump(model, "modek.pkl")
+print("Model saved :>")
 
 # my input to predict the price
 x_pred = [[200, 15000]]
