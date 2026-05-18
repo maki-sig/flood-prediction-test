@@ -111,30 +111,48 @@ export async function GET(request: NextRequest) {
       throw new Error("No forecast intervals resolved for predicted boundaries");
     }
 
-    // 4. Resolve python environment paths
-    let rootDir = process.cwd();
-    if (!fs.existsSync(path.join(rootDir, "venv")) && fs.existsSync(path.join(rootDir, "..", "venv"))) {
-      rootDir = path.join(rootDir, "..");
-    }
-    
-    const pythonPath = path.join(rootDir, "venv", "Scripts", "python.exe");
-    const scriptPath = path.join(rootDir, "backend", "predict_json.py");
-
-    if (!fs.existsSync(pythonPath)) {
-      throw new Error(`Python executable not found at ${pythonPath}`);
-    }
-    if (!fs.existsSync(scriptPath)) {
-      throw new Error(`Python bridge script not found at ${scriptPath}`);
-    }
-
-    // 5. Invoke Python ML prediction for all 72 hours
     const predictInputs = allFeatures.map((f) => ({
       rain_intensity_1h: f.rain_intensity_1h,
       rain_accum_6h: f.rain_accum_6h,
       rain_accum_24h: f.rain_accum_24h,
     }));
 
-    const probabilities = await runPythonPrediction(pythonPath, scriptPath, predictInputs);
+    let probabilities: number[] = [];
+    const backendApiUrl = process.env.BACKEND_API_URL;
+
+    if (backendApiUrl) {
+      const response = await fetch(`${backendApiUrl}/predict`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(predictInputs),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend API returned status ${response.status}`);
+      }
+
+      const resJson = await response.json();
+      probabilities = resJson.probabilities;
+    } else {
+      let rootDir = process.cwd();
+      if (!fs.existsSync(path.join(rootDir, "venv")) && fs.existsSync(path.join(rootDir, "..", "venv"))) {
+        rootDir = path.join(rootDir, "..");
+      }
+      
+      const pythonPath = path.join(rootDir, "venv", "Scripts", "python.exe");
+      const scriptPath = path.join(rootDir, "backend", "predict_json.py");
+
+      if (!fs.existsSync(pythonPath)) {
+        throw new Error(`Python executable not found at ${pythonPath}`);
+      }
+      if (!fs.existsSync(scriptPath)) {
+        throw new Error(`Python bridge script not found at ${scriptPath}`);
+      }
+
+      probabilities = await runPythonPrediction(pythonPath, scriptPath, predictInputs);
+    }
 
     // Combine predictions with forecast features
     const allPredictions = allFeatures.map((f, idx) => ({
