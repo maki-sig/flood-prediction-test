@@ -116,16 +116,6 @@ The `data/` directory contains the datasets used for training and evaluation. In
 
 ---
 
-## How It Works
-
-1. The user selects or pins a location on a **Leaflet.js** map.
-2. The frontend fetches 3-day precipitation forecasts from the **Open-Meteo API**.
-3. Forecast data is sent to the Python backend.
-4. The backend feeds the input into the trained XGBoost model.
-5. The predicted flood probability is returned and displayed in the UI.
-
----
-
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
