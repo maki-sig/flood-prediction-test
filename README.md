@@ -25,7 +25,7 @@ License    MIT
 
 # Flood Prediction Prototype
 
-A full-stack web application that predicts flood probabilities using 3-day forecasted precipitation data, powered by an XGBoost classifier.
+A full-stack web application that predicts flood probabilities using 3-day forecasted precipitation data, powered by an XGBoost classifier. Currently localized for Naga City, Camarines Sur, Philippines.
 
 ---
 
