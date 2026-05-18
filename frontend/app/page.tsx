@@ -916,7 +916,7 @@ export default function Home() {
                   </svg>
                   Timeline Node Inspector: {formatHour(selectedHourDetails.hour)}
                 </h3>
-                <span className={`font-mono text-[9px] border px-2 py-0.5 rounded-[2px] uppercase ${selectedHourCategory.colorClass}`}>
+                <span className={`font-mono text-[9px] border text-center px-2 py-0.5 rounded-[2px] uppercase ${selectedHourCategory.colorClass}`}>
                   {selectedHourCategory.label}
                 </span>
               </div>
@@ -1062,7 +1062,7 @@ export default function Home() {
           <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
           <span>Made with ❤️ by Botis, M. (<a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">@maki-sig</a>)</span>
         </div>
-        <span>API Powered by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Open-Meteo</a></span>
+        <span>APIs powered by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">OPEN-METEO</a> and <a href="https://render.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">RENDER</a></span>
       </footer>
 
       {/* Scroll to Top Button */}
