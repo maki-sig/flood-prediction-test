@@ -1056,9 +1056,12 @@ export default function Home() {
       </div>
 
       {/* Footer (Catppuccin Crust) */}
-      <footer className="w-full border-t border-border-surface bg-bg-crust mt-auto py-5 px-6 flex justify-between items-center text-[10px] font-mono text-text-muted uppercase tracking-widest z-20">
-        <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
-        <span>Open-Meteo Integration Engine v1.0</span>
+      <footer className="w-full border-t border-border-surface bg-bg-crust mt-auto py-5 px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 text-[10px] font-mono text-text-muted uppercase tracking-widest z-20">
+        <div className="flex flex-col gap-1">
+          <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
+          <span>Made with ❤️ by Botis, M. (<a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">@maki-sig</a>)</span>
+        </div>
+        <span>API Powered by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Open-Meteo</a></span>
       </footer>
 
       {/* Scroll to Top Button */}
