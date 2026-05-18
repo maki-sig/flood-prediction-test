@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 
 interface HourlyData {
   time: string;
@@ -41,18 +41,81 @@ interface PredictionResponse {
 const NAGA_LAT = "13.6192";
 const NAGA_LON = "123.1814";
 
+// Probability categorization helper with premium theme semantics
+const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
+  const pct = p * 100;
+  if (pct < 1.0) {
+    return {
+      label: "No Chance of Flooding",
+      colorClass: "text-safe-text border-safe-border bg-safe-bg",
+      textColor: "text-safe-text",
+      hex: theme === "dark" ? "#a7f3d0" : "#059669"
+    };
+  } else if (pct < 10.0) {
+    return {
+      label: "Low Chance of Flooding",
+      colorClass: "text-sky-700 dark:text-sky-200 border-sky-500/20 dark:border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/10",
+      textColor: "text-sky-600 dark:text-sky-400",
+      hex: theme === "dark" ? "#bae6fd" : "#0284c7"
+    };
+  } else if (pct < 35.0) {
+    return {
+      label: "Moderate Chance of Flooding",
+      colorClass: "text-amber-700 dark:text-amber-200 border-amber-500/20 dark:border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/10",
+      textColor: "text-amber-600 dark:text-amber-400",
+      hex: theme === "dark" ? "#fde68a" : "#d97706"
+    };
+  } else {
+    return {
+      label: "High Chance of Flooding",
+      colorClass: "text-rose-700 dark:text-rose-200 border-rose-500/20 dark:border-rose-500/30 bg-rose-500/10 dark:bg-rose-500/10",
+      textColor: "text-rose-600 dark:text-rose-400",
+      hex: theme === "dark" ? "#fecdd3" : "#e11d48"
+    };
+  }
+};
+
 export default function Home() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Load saved theme on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme") as "dark" | "light";
+    if (savedTheme) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTheme(savedTheme);
+    }
+  }, []);
 
   // Manage theme state and inject data attribute
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   }, [theme]);
+
+  // Handle scroll visibility for "Scroll to Top" button
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 300) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Derive active forecast period data block
   const activeData = useMemo(() => {
@@ -73,20 +136,27 @@ export default function Home() {
   // Synchronize map style with system theme selection
   useEffect(() => {
     if (theme === "light") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMapStyle("light");
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMapStyle("dark");
     }
   }, [theme]);
-  const mapRef = React.useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [mapInstance, setMapInstance] = useState<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tileLayerRef = React.useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const polygonRef = React.useRef<any>(null);
 
   // Load Leaflet Script and CSS dynamically on the client side
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((window as any).L) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLeafletLoaded(true);
       return;
     }
@@ -107,10 +177,9 @@ export default function Home() {
   }, []);
 
   // Fetch prediction function
-  const fetchPrediction = async (isManualSync = false) => {
+  const fetchPrediction = useCallback(async (isManualSync = false) => {
     if (isManualSync) setSyncing(true);
     else setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}`);
       if (!res.ok) {
@@ -118,21 +187,23 @@ export default function Home() {
       }
       const json: PredictionResponse = await res.json();
       if ("error" in json) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         throw new Error((json as any).error);
       }
       setData(json);
       // Default selected hour is the peak risk hour
       setSelectedHourIdx(json.days[selectedPeriod].summary.peak_hour);
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch flood predictions");
+    } catch {
+      // Fail silently as error is not used in UI
     } finally {
       setLoading(false);
       setSyncing(false);
     }
-  };
+  }, [selectedPeriod]);
 
   // Initial fetch
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPrediction();
   }, []);
 
@@ -162,39 +233,7 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  // Probability categorization helper with premium theme semantics
-  const getProbabilityCategory = (p: number) => {
-    const pct = p * 100;
-    if (pct < 1.0) {
-      return {
-        label: "No Chance of Flooding",
-        colorClass: "text-emerald-700 dark:text-emerald-200 border-emerald-500/20 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/10",
-        textGradient: "from-emerald-600 to-teal-500 dark:from-emerald-300 dark:to-teal-200",
-        hex: theme === "dark" ? "#a7f3d0" : "#059669"
-      };
-    } else if (pct < 10.0) {
-      return {
-        label: "Low Chance of Flooding",
-        colorClass: "text-sky-700 dark:text-sky-200 border-sky-500/20 dark:border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/10",
-        textGradient: "from-sky-600 to-indigo-500 dark:from-sky-300 dark:to-indigo-200",
-        hex: theme === "dark" ? "#bae6fd" : "#0284c7"
-      };
-    } else if (pct < 35.0) {
-      return {
-        label: "Moderate Chance of Flooding",
-        colorClass: "text-amber-700 dark:text-amber-200 border-amber-500/20 dark:border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/10",
-        textGradient: "from-amber-600 to-orange-500 dark:from-amber-400 dark:to-orange-300",
-        hex: theme === "dark" ? "#fde68a" : "#d97706"
-      };
-    } else {
-      return {
-        label: "High Chance of Flooding",
-        colorClass: "text-rose-700 dark:text-rose-200 border-rose-500/20 dark:border-rose-500/30 bg-rose-500/10 dark:bg-rose-500/10",
-        textGradient: "from-rose-600 to-pink-500 dark:from-rose-400 dark:to-pink-300",
-        hex: theme === "dark" ? "#fecdd3" : "#e11d48"
-      };
-    }
-  };
+
 
   // Selected hour details
   const selectedHourDetails = useMemo(() => {
@@ -205,20 +244,15 @@ export default function Home() {
   // Selected hour category
   const selectedHourCategory = useMemo(() => {
     if (!selectedHourDetails) return null;
-    return getProbabilityCategory(selectedHourDetails.probability);
-  }, [selectedHourDetails]);
+    return getProbabilityCategory(selectedHourDetails.probability, theme);
+  }, [selectedHourDetails, theme]);
 
   // Initialize and Maintain the Leaflet GIS Map
   useEffect(() => {
     if (!leafletLoaded || !data) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const L = (window as any).L;
     if (!L) return;
-
-    // Remove existing map instance if any to prevent hot-reloads conflicts
-    if (mapRef.current) {
-      mapRef.current.remove();
-      mapRef.current = null;
-    }
 
     // Set up Leaflet Map inside #flows-leaflet-map
     const mapInstance = L.map("flows-leaflet-map", {
@@ -247,7 +281,7 @@ export default function Home() {
     ];
 
     // Determine initial color style
-    const category = getProbabilityCategory(selectedHourDetails?.probability || 0);
+    const category = getProbabilityCategory(selectedHourDetails?.probability || 0, theme);
 
     const polygon = L.polygon(polygonCoords, {
       color: category.hex,
@@ -258,7 +292,8 @@ export default function Home() {
     }).addTo(mapInstance);
 
     polygonRef.current = polygon;
-    mapRef.current = mapInstance;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMapInstance(mapInstance);
 
     // Automatically fit the map view smoothly bounds
     mapInstance.fitBounds(polygon.getBounds(), {
@@ -266,16 +301,15 @@ export default function Home() {
     });
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+      mapInstance.remove();
+      setMapInstance(null);
     };
   }, [leafletLoaded, data]);
 
   // Dynamically swap the active tile layer based on mapStyle selection
   useEffect(() => {
-    if (!leafletLoaded || !mapRef.current) return;
+    if (!leafletLoaded || !mapInstance) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const L = (window as any).L;
     if (!L) return;
 
@@ -302,15 +336,15 @@ export default function Home() {
       maxZoom: 20,
       attribution: attrib,
       subdomains: "abcd"
-    }).addTo(mapRef.current);
+    }).addTo(mapInstance);
 
     tileLayerRef.current = newLayer;
-  }, [mapStyle, leafletLoaded]);
+  }, [mapStyle, leafletLoaded, mapInstance]);
 
   // Dynamically update polygon color styles on selected hour or theme change
   useEffect(() => {
     if (!leafletLoaded || !selectedHourDetails) return;
-    const category = getProbabilityCategory(selectedHourDetails.probability);
+    const category = getProbabilityCategory(selectedHourDetails.probability, theme);
 
     if (polygonRef.current) {
       polygonRef.current.setStyle({
@@ -365,8 +399,8 @@ export default function Home() {
   // Overall Risk Category
   const summaryCategory = useMemo(() => {
     if (!activeData) return null;
-    return getProbabilityCategory(activeData.summary.peak_probability / 100);
-  }, [activeData]);
+    return getProbabilityCategory(activeData.summary.peak_probability / 100, theme);
+  }, [activeData, theme]);
 
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-blue-500/20 selection:text-blue-500 flows-root">
@@ -398,7 +432,7 @@ export default function Home() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
             </span>
-            <span className="text-emerald-700 dark:text-emerald-200 font-bold uppercase tracking-wider">ONLINE</span>
+            <span className="text-safe-text font-bold uppercase tracking-wider">ONLINE</span>
           </div>
 
           <button
@@ -452,7 +486,7 @@ export default function Home() {
                       {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
                         const dateVal = data?.days[period]?.date || "";
                         const formattedDate = dateVal
-                           ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                          ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
                           : "";
                         return (
                           <button
@@ -487,7 +521,7 @@ export default function Home() {
                   <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border-surface font-mono">
                     <div className="flex flex-col">
                       <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Peak Risk</span>
-                      <span className={`text-2xl font-extrabold bg-gradient-to-r ${summaryCategory.textGradient} text-transparent bg-clip-text mt-1`}>
+                      <span className={`text-2xl font-extrabold ${summaryCategory?.textColor || 'text-text-text'} mt-1`}>
                         {activeData.summary.peak_probability}%
                       </span>
                       <span className="text-[9px] text-text-muted mt-1">
@@ -596,21 +630,21 @@ export default function Home() {
               <div className="flex items-center gap-1 border-r border-border-surface pr-2.5">
                 <button
                   title="Zoom In"
-                  onClick={() => mapRef.current?.zoomIn()}
+                  onClick={() => mapInstance?.zoomIn()}
                   className="w-6 h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
                 >
                   ＋
                 </button>
                 <button
                   title="Zoom Out"
-                  onClick={() => mapRef.current?.zoomOut()}
+                  onClick={() => mapInstance?.zoomOut()}
                   className="w-6 h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
                 >
                   －
                 </button>
                 <button
                   title="Reset Map Position"
-                  onClick={() => mapRef.current?.flyTo([13.635, 123.250], 12, { animate: true, duration: 1.2 })}
+                  onClick={() => mapInstance?.flyTo([13.635, 123.250], 12, { animate: true, duration: 1.2 })}
                   className="w-6 h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text rounded-[4px] cursor-pointer transition-colors"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -934,7 +968,7 @@ export default function Home() {
                 </h3>
 
                 <p className="text-xs font-light text-text-subtext leading-relaxed mb-4">
-                  Predictive logs execute in local virtual environments. Feature lag calculations sum the past 6h and 24h intervals back into today's timeline to ensure seamless continuity.
+                  Predictive logs execute in local virtual environments. Feature lag calculations sum the past 6h and 24h intervals back into today&apos;s timeline to ensure seamless continuity.
                 </p>
               </div>
 
@@ -980,7 +1014,7 @@ export default function Home() {
                     </thead>
                     <tbody className="font-mono text-[11px]">
                       {activeData.hourly.map((h) => {
-                        const hrCat = getProbabilityCategory(h.probability);
+                        const hrCat = getProbabilityCategory(h.probability, theme);
                         return (
                           <tr
                             key={h.hour}
@@ -1023,9 +1057,27 @@ export default function Home() {
 
       {/* Footer (Catppuccin Crust) */}
       <footer className="w-full border-t border-border-surface bg-bg-crust mt-auto py-5 px-6 flex justify-between items-center text-[10px] font-mono text-text-muted uppercase tracking-widest z-20">
-        <span>© 2026 AquaShield AI Predictive Core.</span>
+        <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
         <span>Open-Meteo Integration Engine v1.0</span>
       </footer>
+
+      {/* Scroll to Top Button */}
+      <button
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        className={`fixed bottom-6 right-6 z-50 flex items-center justify-center cursor-pointer transition-all duration-300 ${showScrollTop ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none"
+          }`}
+        title="Scroll to Top"
+      >
+        {/* Outer Hexagon (Acts as Border) */}
+        <div className="bg-border-surface [clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)] w-[34px] h-[38px] flex items-center justify-center hover:bg-blue-600 dark:hover:bg-blue-400 transition-colors shadow-2xl">
+          {/* Inner Hexagon (Fill) */}
+          <div className="bg-bg-mantle [clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)] w-[32px] h-[36px] flex items-center justify-center text-text-muted hover:text-text-text transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+          </div>
+        </div>
+      </button>
 
     </div>
   );

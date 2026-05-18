@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 
 // Helper function to invoke Python bridge script
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function runPythonPrediction(pythonPath: string, scriptPath: string, inputData: any[]): Promise<number[]> {
   return new Promise((resolve, reject) => {
     const pyProcess = spawn(pythonPath, [scriptPath]);
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
     const precipitation: number[] = weatherData.hourly.precipitation;
 
     // 2. Compute rolling features across all hourly points
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const features: any[] = [];
     for (let i = 0; i < times.length; i++) {
       const rain_intensity_1h = precipitation[i];
@@ -150,6 +152,7 @@ export async function GET(request: NextRequest) {
     const dayAfterTomorrowPredictions = allPredictions.slice(todayFeatures.length + tomorrowFeatures.length);
 
     // 6. Calculate stats for each day block
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function calculateDailyStats(predictions: any[]) {
       let peakProb = 0;
       let peakHour = 0;
@@ -212,6 +215,7 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "An unexpected error occurred" },

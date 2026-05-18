@@ -13,6 +13,12 @@
   --text-subtext: #cbd5e1;
   --text-muted: #94a3b8;
   
+  --safe-text: #a7f3d0;
+  --safe-bg: rgba(16, 185, 129, 0.1);
+  --safe-border: rgba(16, 185, 129, 0.3);
+  --safe-from: #a7f3d0;
+  --safe-to: #5eead4;
+
   --scrollbar-track: #0b0f19;
   --scrollbar-thumb: #374151;
   --scrollbar-thumb-hover: #4b5563;
@@ -31,6 +37,12 @@
   --text-subtext: #334155;
   --text-muted: #64748b;
 
+  --safe-text: #065f46;
+  --safe-bg: rgba(16, 185, 129, 0.1);
+  --safe-border: rgba(16, 185, 129, 0.2);
+  --safe-from: #065f46;
+  --safe-to: #0f766e;
+
   --scrollbar-track: #f1f5f9;
   --scrollbar-thumb: #cbd5e1;
   --scrollbar-thumb-hover: #94a3b8;
@@ -44,6 +56,11 @@
   --color-text-text: var(--text-text);
   --color-text-subtext: var(--text-subtext);
   --color-text-muted: var(--text-muted);
+  --color-safe-text: var(--safe-text);
+  --color-safe-bg: var(--safe-bg);
+  --color-safe-border: var(--safe-border);
+  --color-safe-from: var(--safe-from);
+  --color-safe-to: var(--safe-to);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
