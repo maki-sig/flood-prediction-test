@@ -14,26 +14,24 @@ Project    flood-prediction-test
 Purpose    Flood probability prediction
 Input      3-day forecasted precipitation
 Model      XGBoost Classifier
-Frontend   TypeScript + CSS
+Frontend   Next.js · TypeScript · Tailwind CSS · Leaflet.js
 Backend    Python
+Weather    Open-Meteo API
 Structure  frontend / backend / model / data
 License    MIT
-Languages  TypeScript 86% · Python 6% · CSS 7%
-Commits    16
-Branch     main
 ```
 
 ---
 
-# Flood Prediction Webapp Prototype
+# Flood Prediction Prototype
 
-A full-stack web application prototype that predicts flood probabilities using 3-day forecasted precipitation data, powered by an XGBoost classifier.
+A full-stack web application that predicts flood probabilities using 3-day forecasted precipitation data, powered by an XGBoost classifier.
 
 ---
 
 ## Overview
 
-This project ingests short-range precipitation forecast data and runs it through a trained machine learning model to produce flood probability estimates. The results are surfaced through a TypeScript-based frontend, with a Python backend handling inference requests.
+This project fetches 3-day precipitation forecasts from the Open-Meteo API for a user-selected location, then runs the data through a trained XGBoost classifier to produce flood probability estimates. Locations are picked interactively via a Leaflet.js map, and results are surfaced through a Next.js frontend with a Python backend handling inference.
 
 ---
 
@@ -41,7 +39,7 @@ This project ingests short-range precipitation forecast data and runs it through
 
 ```
 flood-prediction-test/
-├── frontend/       # TypeScript/CSS web UI
+├── frontend/       # Next.js + Tailwind CSS web UI
 ├── backend/        # Python API server
 ├── model/          # XGBoost model training & serialization
 └── data/           # Datasets used for training and evaluation
@@ -51,12 +49,14 @@ flood-prediction-test/
 
 ## Tech Stack
 
-| Layer     | Technology                        |
-|-----------|-----------------------------------|
-| Frontend  | TypeScript, CSS                   |
-| Backend   | Python                            |
-| ML Model  | XGBoost Classifier                |
-| Data      | 3-day forecasted precipitation    |
+| Layer        | Technology                               |
+|--------------|------------------------------------------|
+| Frontend     | Next.js, TypeScript, Tailwind CSS        |
+| Maps         | Leaflet.js                               |
+| Weather Data | Open-Meteo API                           |
+| Backend      | Python                                   |
+| ML Model     | XGBoost Classifier                       |
+| Input Data   | 3-day forecasted precipitation           |
 
 ---
 
@@ -66,7 +66,6 @@ flood-prediction-test/
 
 - Python 3.9+
 - Node.js 18+
-- pip / npm
 
 ### 1. Clone the repository
 
@@ -79,7 +78,6 @@ cd flood-prediction-test
 
 ```bash
 cd backend
-pip install -r requirements.txt
 python main.py
 ```
 
@@ -93,7 +91,7 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000` (or as configured).
+The frontend will be available at `http://localhost:3000`.
 
 ---
 
@@ -120,10 +118,11 @@ The `data/` directory contains the datasets used for training and evaluation. In
 
 ## How It Works
 
-1. The frontend collects or displays precipitation forecast inputs.
-2. A request is sent to the Python backend.
-3. The backend feeds the input into the trained XGBoost model.
-4. The predicted flood probability is returned and displayed in the UI.
+1. The user selects or pins a location on a **Leaflet.js** map.
+2. The frontend fetches 3-day precipitation forecasts from the **Open-Meteo API**.
+3. Forecast data is sent to the Python backend.
+4. The backend feeds the input into the trained XGBoost model.
+5. The predicted flood probability is returned and displayed in the UI.
 
 ---
 
