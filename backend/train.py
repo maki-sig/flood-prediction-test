@@ -5,7 +5,7 @@ from xgboost import XGBClassifier
 # using classifier to predict if rain causes flood or nah
 
 # loading the features dataset
-ds = pd.read_csv("protoype_features.csv")
+ds = pd.read_csv("../data/flood_features.csv")
 
 # confirmation by printing no of rows and columns
 print("Data set loaded")
@@ -42,6 +42,6 @@ print(f"\nTraining the model...")
 
 # training
 model.fit(x_train, y_train)
-joblib.dump(model, "flood_pred_model.pkl")
+joblib.dump(model, "../model/flood_model.pkl")
 
-print("\nTraining complete, model saved to --> flood_pred_model.pkl")
+print("\nTraining complete, model saved to --> flood_model.pkl")

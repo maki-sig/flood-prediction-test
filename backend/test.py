@@ -1,7 +1,7 @@
 import joblib
 
 # loading the model
-predict_flood = joblib.load("flood_pred_model.pkl")
+predict_flood = joblib.load("../model/flood_model.pkl")
 print("Model loaded")
 
 # parameters to predict
@@ -17,9 +17,7 @@ f"\n2. Rainfall 6h Accumulation: {accum_6h}" \
 f"\n3. Rainfall 24h Accumulation: {accum_24h}")
 print("\nPredicting flood...")
 
-prediction = predict_flood.predict(rainfall_data)
+# [0][0] is the probability of not flooding [0][1] is the probability of flooding
+prediction = predict_flood.predict_proba(rainfall_data)[0][1]
 
-if(prediction == 1):
-    print(f"Result:\t{prediction} - yes it will flood")
-else:
-    print(f"Result:\t{prediction} - it will not flood")
+print(f"Result - Probability of flooding: {prediction * 100:.4f}%")
