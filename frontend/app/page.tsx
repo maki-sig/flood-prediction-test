@@ -625,42 +625,43 @@ export default function Home() {
             )}
 
             {/* Custom Map Menubar (Top Right of Map) */}
-            <div className="absolute top-6 right-6 z-20 flex items-center gap-2 border border-border-surface bg-bg-mantle px-3 py-2 rounded-[4px] shadow-2xl font-mono text-[9px] text-text-text">
+            {/* Custom Map Menubar (Top Right of Map) - Responsive */}
+            <div className="absolute top-4 md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[90vw] md:max-w-none">
               {/* Zoom & Reset Buttons */}
-              <div className="flex items-center gap-1 border-r border-border-surface pr-2.5">
+              <div className="flex items-center gap-1 border-r border-border-surface pr-1.5 md:pr-2.5">
                 <button
                   title="Zoom In"
                   onClick={() => mapInstance?.zoomIn()}
-                  className="w-6 h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
+                  className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
                 >
                   ＋
                 </button>
                 <button
                   title="Zoom Out"
                   onClick={() => mapInstance?.zoomOut()}
-                  className="w-6 h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
+                  className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
                 >
                   －
                 </button>
                 <button
                   title="Reset Map Position"
                   onClick={() => mapInstance?.flyTo([13.635, 123.250], 12, { animate: true, duration: 1.2 })}
-                  className="w-6 h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text rounded-[4px] cursor-pointer transition-colors"
+                  className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text rounded-[4px] cursor-pointer transition-colors"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3 h-3 md:w-3.5 md:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14 0a5 5 0 11-10 0 5 5 0 0110 0z" />
                   </svg>
                 </button>
               </div>
 
               {/* Map Style Selector */}
-              <div className="flex items-center gap-1.5 pl-1">
-                <span className="text-text-subtext font-bold text-[8px] uppercase tracking-wider mr-1">STYLE:</span>
+              <div className="flex items-center gap-1 pl-0.5">
+                <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-wider mr-0.5 md:mr-1">STYLE:</span>
                 {(["dark", "light", "satellite"] as const).map((style) => (
                   <button
                     key={style}
                     onClick={() => setMapStyle(style)}
-                    className={`px-2 py-1 text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${mapStyle === style
+                    className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${mapStyle === style
                       ? "bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white"
                       : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text"
                       }`}
@@ -671,27 +672,27 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Absolute floating premium risk legend bottom-right of map */}
-            <div className="absolute bottom-6 right-6 bg-bg-mantle border border-border-surface px-3 py-2.5 rounded-[4px] font-mono text-[9px] text-text-text flex flex-col gap-2 z-20 shadow-2xl min-w-[155px]">
-              <span className="text-text-subtext font-bold text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1.5 mb-0.5">
+            {/* Absolute floating premium risk legend bottom-right of map - Responsive */}
+            <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 bg-bg-mantle border border-border-surface px-2 py-1 md:px-3 md:py-2.5 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-2 z-20 shadow-2xl min-w-0 md:min-w-[155px] max-w-[90vw] md:max-w-none">
+              <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1.5 mb-0.5 hidden md:block">
                 Flood Probability
               </span>
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20" />
-                  <span className="text-[8.5px] font-normal text-text-text">Safe (&lt;1%)</span>
+              <div className="flex flex-row md:flex-col gap-2 md:gap-1.5">
+                <div className="flex items-center gap-1 md:gap-2">
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Safe (&lt;1%)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20" />
-                  <span className="text-[8.5px] font-normal text-text-text">Low (1-10%)</span>
+                <div className="flex items-center gap-1 md:gap-2">
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Low (1-10%)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20" />
-                  <span className="text-[8.5px] font-normal text-text-text">Moderate (10-35%)</span>
+                <div className="flex items-center gap-1 md:gap-2">
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Mod (10-35%)</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20" />
-                  <span className="text-[8.5px] font-normal text-text-text">High (&gt;35%)</span>
+                <div className="flex items-center gap-1 md:gap-2">
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">High (&gt;35%)</span>
                 </div>
               </div>
             </div>
