@@ -1,26 +1,195 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+:root, :root[data-theme="dark"] {
+  /* Premium Deep Space Dark Mode */
+  --bg-base: #0b0f19;
+  --bg-mantle: #111827;
+  --bg-mantle-rgb: 17, 24, 39;
+  --bg-crust: #1f2937;
+  --bg-crust-rgb: 31, 41, 55;
+  --border-surface: #374151;
+  --border-surface-rgb: 55, 65, 81;
+  --text-text: #f8fafc;
+  --text-subtext: #cbd5e1;
+  --text-muted: #94a3b8;
+  
+  --scrollbar-track: #0b0f19;
+  --scrollbar-thumb: #374151;
+  --scrollbar-thumb-hover: #4b5563;
+}
+
+:root[data-theme="light"] {
+  /* Premium Glacier Light Mode */
+  --bg-base: #f8fafc;
+  --bg-mantle: #ffffff;
+  --bg-mantle-rgb: 255, 255, 255;
+  --bg-crust: #f1f5f9;
+  --bg-crust-rgb: 241, 245, 249;
+  --border-surface: #cbd5e1;
+  --border-surface-rgb: 203, 213, 225;
+  --text-text: #0f172a;
+  --text-subtext: #334155;
+  --text-muted: #64748b;
+
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg-base: var(--bg-base);
+  --color-bg-mantle: var(--bg-mantle);
+  --color-bg-crust: var(--bg-crust);
+  --color-border-surface: var(--border-surface);
+  --color-text-text: var(--text-text);
+  --color-text-subtext: var(--text-subtext);
+  --color-text-muted: var(--text-muted);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-base);
+  color: var(--text-text);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Custom Sleek Scrollbar mapped to Theme Variables */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox scrollbar compatibility */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  transition: border-color 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Dynamic Core Structural CSS Selector classes */
+.flows-root {
+  background-color: var(--bg-base) !important;
+  color: var(--text-text) !important;
+}
+
+.flows-header {
+  background-color: rgba(var(--bg-mantle-rgb), 0.9) !important;
+  border-bottom-color: var(--border-surface) !important;
+}
+
+.flows-sidebar {
+  background-color: var(--bg-mantle) !important;
+  border-right-color: var(--border-surface) !important;
+}
+
+.flows-card {
+  background-color: rgba(var(--bg-mantle-rgb), 0.4) !important;
+  border-color: var(--border-surface) !important;
+}
+
+.flows-subbox {
+  background-color: rgba(var(--bg-crust-rgb), 0.4) !important;
+  border-color: var(--border-surface) !important;
+}
+
+.flows-indicator {
+  background-color: rgba(var(--bg-crust-rgb), 0.5) !important;
+  border-color: var(--border-surface) !important;
+}
+
+.flows-tablerow {
+  border-bottom-color: rgba(var(--border-surface-rgb), 0.4) !important;
+}
+
+.flows-tablerow:hover {
+  background-color: rgba(var(--border-surface-rgb), 0.15) !important;
+}
+
+.flows-chart-text {
+  fill: var(--text-subtext) !important;
+}
+
+.flows-chart-text-left {
+  fill: var(--text-muted) !important;
+}
+
+.flows-chart-text-right {
+  fill: var(--text-muted) !important;
+}
+
+.flows-gridline line {
+  stroke: var(--border-surface) !important;
+}
+
+/* Custom styles for Leaflet Tooltips, Popups, and Controls with 100% Opacity */
+.leaflet-catppuccin-tooltip {
+  background-color: var(--bg-mantle) !important;
+  color: var(--text-text) !important;
+  border: 1px solid var(--border-surface) !important;
+  border-radius: 4px !important;
+  font-family: var(--font-sans), sans-serif !important;
+  font-size: 10px !important;
+  padding: 4px 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.3s ease;
+  opacity: 1 !important;
+}
+
+.leaflet-catppuccin-tooltip::before {
+  border-top-color: var(--border-surface) !important;
+}
+
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: var(--bg-mantle) !important;
+  color: var(--text-text) !important;
+  border: 1px solid var(--border-surface) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+}
+
+.leaflet-container {
+  background: var(--bg-crust) !important;
+  outline: none;
+  transition: background-color 0.3s ease;
+}
+
+.leaflet-bar {
+  border: 1px solid var(--border-surface) !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  overflow: hidden;
+  transition: border-color 0.3s ease;
+}
+
+.leaflet-bar a {
+  background-color: var(--bg-mantle) !important;
+  color: var(--text-text) !important;
+  border-bottom: 1px solid var(--border-surface) !important;
+  transition: background-color 0.2s, color 0.2s;
+  opacity: 1 !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: var(--border-surface) !important;
+  color: #3b82f6 !important;
+}
+
+.leaflet-bar a.leaflet-disabled {
+  background-color: var(--bg-crust) !important;
+  color: var(--text-muted) !important;
 }
