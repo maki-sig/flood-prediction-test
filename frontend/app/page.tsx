@@ -410,7 +410,7 @@ export default function Home() {
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-[#89b4fa]/5 dark:bg-[#89b4fa]/3 bg-[#89b4fa]/1 rounded-none blur-[120px] pointer-events-none z-0" />
 
       {/* Header Navigation (Catppuccin Mantle) */}
-      <header className="relative w-full border-b border-border-surface bg-bg-mantle/90 backdrop-blur-md z-30 px-6 py-4 flex items-center justify-between flows-header">
+      <header className="relative w-full border-b border-border-surface bg-bg-mantle/90 backdrop-blur-md z-30 px-4 md:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 flows-header">
         <div className="flex items-center gap-3">
           <div>
             <h1 className="text-sm md:text-base font-extrabold tracking-wider uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
@@ -459,10 +459,10 @@ export default function Home() {
       <div className="flex flex-col w-full z-10">
 
         {/* SECTION 1: Docked Split Viewport Map (Right) & Left Sidebar Analytics (Left) */}
-        <section className="relative w-full h-[calc(100vh-66px)] min-h-[550px] border-b border-border-surface flex flex-row overflow-hidden bg-bg-base z-10">
+        <section className="relative w-full h-auto md:h-[calc(100vh-66px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
 
           {/* DOCKED SIDEBAR PANEL (Left, height fills map) */}
-          <aside className="w-[420px] shrink-0 h-full border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans shadow-lg z-20 flows-sidebar">
+          <aside className="w-full md:w-[420px] shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans shadow-lg z-20 flows-sidebar">
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
@@ -521,7 +521,7 @@ export default function Home() {
                   <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border-surface font-mono">
                     <div className="flex flex-col">
                       <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Peak Risk</span>
-                      <span className={`text-2xl font-extrabold ${summaryCategory?.textColor || 'text-text-text'} mt-1`}>
+                      <span className={`text-xl md:text-2xl font-extrabold ${summaryCategory?.textColor || 'text-text-text'} mt-1`}>
                         {activeData.summary.peak_probability}%
                       </span>
                       <span className="text-[9px] text-text-muted mt-1">
@@ -531,7 +531,7 @@ export default function Home() {
 
                     <div className="flex flex-col">
                       <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Rainfall</span>
-                      <span className="text-2xl font-extrabold text-text-text mt-1">
+                      <span className="text-xl md:text-2xl font-extrabold text-text-text mt-1">
                         {activeData.summary.total_precipitation}<span className="text-[10px] text-text-subtext font-light ml-0.5">mm</span>
                       </span>
                       <span className="text-[9px] text-text-muted mt-1">24h Forecast</span>
@@ -539,7 +539,7 @@ export default function Home() {
 
                     <div className="flex flex-col">
                       <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Mean Index</span>
-                      <span className="text-2xl font-extrabold text-text-subtext mt-1">
+                      <span className="text-xl md:text-2xl font-extrabold text-text-subtext mt-1">
                         {activeData.summary.average_probability}%
                       </span>
                       <span className="text-[9px] text-text-muted mt-1">Mean Prob</span>
@@ -614,7 +614,7 @@ export default function Home() {
           </aside>
 
           {/* DOCKED MAP PANEL (Right, fills map height) */}
-          <div className="flex-1 h-full relative z-10 bg-[#11111b]">
+          <div className="flex-1 h-[400px] md:h-full relative z-10 bg-[#11111b]">
             <div id="flows-leaflet-map" className="w-full h-full z-10" />
 
             {!leafletLoaded && (
@@ -925,21 +925,21 @@ export default function Home() {
                 {/* rain_intensity_1h */}
                 <div className="flex flex-col bg-bg-crust/40 rounded-[4px] p-3 border border-border-surface gap-1.5">
                   <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">rain_intensity_1h</span>
-                  <span className="text-base font-bold text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
+                  <span className="text-sm md:text-base font-bold text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
                   <span className="text-[9.5px] font-sans font-light text-text-subtext leading-normal">Precipitation current hour</span>
                 </div>
 
                 {/* rain_accum_6h */}
                 <div className="flex flex-col bg-bg-crust/40 rounded-[4px] p-3 border border-border-surface gap-1.5 flows-subbox">
                   <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">rain_accum_6h</span>
-                  <span className="text-base font-bold text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
+                  <span className="text-sm md:text-base font-bold text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
                   <span className="text-[9.5px] font-sans font-light text-text-subtext leading-normal">Rolling 6h accumulation</span>
                 </div>
 
                 {/* rain_accum_24h */}
                 <div className="flex flex-col bg-bg-crust/40 rounded-[4px] p-3 border border-border-surface gap-1.5 flows-subbox">
                   <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">rain_accum_24h</span>
-                  <span className="text-base font-bold text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
+                  <span className="text-sm md:text-base font-bold text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
                   <span className="text-[9.5px] font-sans font-light text-text-subtext leading-normal">Rolling 24h accumulation</span>
                 </div>
 
@@ -952,7 +952,7 @@ export default function Home() {
                   <p className="text-[10px] font-sans font-light text-text-subtext mt-0.5">XGBoost prediction index</p>
                 </div>
                 <div className="text-right flex flex-col items-end">
-                  <span className="text-lg font-mono font-bold text-text-text">{(selectedHourDetails.probability * 100).toFixed(4)}%</span>
+                  <span className="text-base md:text-lg font-mono font-bold text-text-text">{(selectedHourDetails.probability * 100).toFixed(4)}%</span>
                 </div>
               </div>
             </div>
@@ -1000,7 +1000,7 @@ export default function Home() {
                   Evaluated Logs Timeline & Classifications
                 </h3>
 
-                <div className="max-h-[350px] overflow-y-auto pr-1 border border-border-surface bg-bg-crust/20 rounded-[4px] flows-subbox">
+                <div className="max-h-[350px] overflow-y-auto overflow-x-auto pr-1 border border-border-surface bg-bg-crust/20 rounded-[4px] flows-subbox">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-border-surface text-text-muted font-mono text-[9px] uppercase tracking-wider bg-bg-mantle sticky top-0 z-10 flows-header">
@@ -1009,7 +1009,7 @@ export default function Home() {
                         <th className="py-2.5 px-3">Accum (6h)</th>
                         <th className="py-2.5 px-3">Accum (24h)</th>
                         <th className="py-2.5 px-3 text-center">Probability</th>
-                        <th className="py-2.5 px-3 text-right">Risk Classification</th>
+                        <th className="py-2.5 px-3 text-center md:text-right">Risk Classification</th>
                       </tr>
                     </thead>
                     <tbody className="font-mono text-[11px]">
@@ -1032,7 +1032,7 @@ export default function Home() {
                             <td className="py-2.5 px-3 text-center font-bold text-text-text">
                               {(h.probability * 100).toFixed(3)}%
                             </td>
-                            <td className="py-2.5 px-3 text-right">
+                            <td className="py-2.5 px-3 text-center md:text-right">
                               <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[10px] font-bold border ${hrCat.colorClass}`}>
                                 {hrCat.label}
                               </span>
