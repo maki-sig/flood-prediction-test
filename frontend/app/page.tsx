@@ -432,47 +432,48 @@ export default function Home() {
       <div className="absolute bottom-20 right-10 w-96 h-96 bg-[#89b4fa]/5 dark:bg-[#89b4fa]/3 bg-[#89b4fa]/1 rounded-none blur-[120px] pointer-events-none z-0" />
 
       {/* Header Navigation (Catppuccin Mantle) */}
-      <header className="relative w-full border-b border-border-surface bg-bg-mantle/90 backdrop-blur-md z-30 px-4 md:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 flows-header">
-        <div className="flex items-center gap-3">
+      <header className="relative w-full border-b border-border-surface bg-bg-mantle/90 backdrop-blur-md z-30 px-3 md:px-6 py-2.5 md:py-4 flex flex-row items-center justify-between gap-2 flows-header">
+        <div className="flex items-center gap-2 md:gap-3">
           <div>
-            <h1 className="text-sm md:text-base font-extrabold tracking-wider uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
+            <h1 className="text-[11px] md:text-base font-extrabold tracking-wider uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
               FLOWS
             </h1>
-            <p className="text-[9px] text-text-subtext font-mono tracking-wider uppercase">ML-Driven Flood Prediction Module</p>
+            <p className="text-[7px] md:text-[9px] text-text-subtext font-mono tracking-wider uppercase">ML-Driven Flood Prediction Module</p>
           </div>
         </div>
 
         {/* Live System Indicators & Theme Toggle */}
-        <div className="flex items-center gap-4 font-mono text-[10px] text-text-subtext">
-          <div className="flex items-center justify-center gap-2 h-7 px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
-            <span className="text-text-subtext font-bold">NEXT UPDATE IN:</span>
-            <span className="text-blue-600 dark:text-blue-400 font-bold animate-pulse">{timeUntilNextHour}</span>
+        <div className="flex items-center gap-1.5 md:gap-4 font-mono text-[8px] md:text-[10px] text-text-subtext">
+          {/* NEXT UPDATE — hidden on smallest screens to save space */}
+          <div className="hidden sm:flex items-center justify-center gap-1.5 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
+            <span className="text-text-subtext font-bold text-[7px] md:text-[10px]">NEXT UPDATE IN:</span>
+            <span className="text-blue-600 dark:text-blue-400 font-bold animate-pulse text-[7px] md:text-[10px]">{timeUntilNextHour}</span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 h-7 px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
+          <div className="flex items-center justify-center gap-1 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img 
               src="https://flagsapi.com/PH/flat/64.png" 
               alt="Philippines Flag" 
-              className="w-3.5 h-3.5 object-contain select-none" 
+              className="w-3 h-3 md:w-3.5 md:h-3.5 object-contain select-none" 
             />
-            <span className="text-text-subtext font-bold uppercase tracking-wider">PST:</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold tracking-wider">{phTime || "12:00:00 AM"}</span>
+            <span className="text-text-subtext font-bold uppercase tracking-wider text-[7px] md:text-[10px]">PST:</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold tracking-wider text-[7px] md:text-[10px]">{phTime || "12:00:00 AM"}</span>
           </div>
 
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-            className="flex items-center justify-center w-7 h-7 bg-bg-crust/50 border border-border-surface text-text-muted hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors flows-indicator"
+            className="flex items-center justify-center w-5 h-5 md:w-7 md:h-7 bg-bg-crust/50 border border-border-surface text-text-muted hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors flows-indicator"
           >
             {theme === 'dark' ? (
               /* Sun Icon for Light Mode */
-              <svg className="w-[13px] h-[13px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-[10px] h-[10px] md:w-[13px] md:h-[13px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
               </svg>
             ) : (
               /* Moon Icon for Dark Mode */
-              <svg className="w-[13px] h-[13px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-[10px] h-[10px] md:w-[13px] md:h-[13px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
               </svg>
             )}
@@ -684,27 +685,27 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Absolute floating premium risk legend bottom-right of map - Responsive Grid */}
-            <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 bg-bg-mantle border border-border-surface px-3 py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1.5 z-20 shadow-2xl w-[88vw] sm:w-auto sm:min-w-[160px] md:min-w-[160px]">
+            {/* Absolute floating premium risk legend - vertical on mobile, bottom-right always */}
+            <div className="absolute bottom-4 right-3 md:bottom-6 md:right-6 bg-bg-mantle border border-border-surface px-2.5 py-2 md:px-3 md:py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1 md:gap-1.5 z-20 shadow-2xl min-w-[90px] md:min-w-[160px]">
               <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1 mb-0.5">
                 Flood Probability
               </span>
-              <div className="grid grid-cols-2 md:flex md:flex-col gap-x-4 gap-y-1.5 md:gap-1.5">
+              <div className="flex flex-col gap-1 md:gap-1.5">
                 <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20 shrink-0" />
-                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">Safe (&lt;1%)</span>
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20 shrink-0" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Safe (&lt;1%)</span>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20 shrink-0" />
-                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">Low (1-10%)</span>
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20 shrink-0" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Low (1-10%)</span>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20 shrink-0" />
-                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">Mod (10-35%)</span>
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20 shrink-0" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Mod (10-35%)</span>
                 </div>
                 <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2.5 h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20 shrink-0" />
-                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">High (&gt;35%)</span>
+                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20 shrink-0" />
+                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">High (&gt;35%)</span>
                 </div>
               </div>
             </div>
