@@ -82,8 +82,8 @@ export async function GET(request: NextRequest) {
     // 1. Resolve exact targets in Asia/Manila timezone
     const { todayStr, tomorrowStr, dayAfterTomorrowStr } = getManilaDateStrings();
 
-    const startOfToday = `${todayStr}T00:00:00`;
-    const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59`;
+    const startOfToday = `${todayStr}T00:00:00+08:00`;
+    const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59+08:00`;
 
     const forceUpdate = searchParams.get("update") === "true";
 
