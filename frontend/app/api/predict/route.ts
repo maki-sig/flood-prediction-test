@@ -1,41 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { spawn } from "child_process";
-import path from "path";
-import fs from "fs";
+import { supabase } from "@/lib/supabase";
 
-// Helper function to invoke Python bridge script
+// Helper function to calculate daily stats
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function runPythonPrediction(pythonPath: string, scriptPath: string, inputData: any[]): Promise<number[]> {
-  return new Promise((resolve, reject) => {
-    const pyProcess = spawn(pythonPath, [scriptPath]);
-    let outputData = "";
-    let errorData = "";
+function calculateDailyStats(predictions: any[]) {
+  let peakProb = 0;
+  let peakHour = 0;
+  let totalRain = 0;
+  let avgProb = 0;
 
-    pyProcess.stdout.on("data", (data) => {
-      outputData += data.toString();
-    });
-
-    pyProcess.stderr.on("data", (data) => {
-      errorData += data.toString();
-    });
-
-    pyProcess.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(errorData || `Python script exited with code ${code}`));
-        return;
-      }
-      try {
-        const probs = JSON.parse(outputData);
-        resolve(probs);
-      } catch (err) {
-        reject(new Error("Failed to parse prediction probabilities: " + err));
-      }
-    });
-
-    // Write input JSON to stdin and end the stream
-    pyProcess.stdin.write(JSON.stringify(inputData));
-    pyProcess.stdin.end();
+  predictions.forEach((p) => {
+    if (p.probability > peakProb) {
+      peakProb = p.probability;
+      peakHour = p.hour;
+    }
+    totalRain += p.rain_intensity_1h;
+    avgProb += p.probability;
   });
+
+  avgProb = predictions.length > 0 ? avgProb / predictions.length : 0;
+
+  let riskLevel = "Safe";
+  if (peakProb > 0.5) riskLevel = "High";
+  else if (peakProb > 0.2) riskLevel = "Moderate";
+  else if (peakProb > 0.05) riskLevel = "Low";
+
+  return {
+    summary: {
+      risk_level: riskLevel,
+      peak_probability: parseFloat((peakProb * 100).toFixed(4)),
+      peak_hour: peakHour,
+      average_probability: parseFloat((avgProb * 100).toFixed(4)),
+      total_precipitation: parseFloat(totalRain.toFixed(2)),
+    },
+    hourly: predictions,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -44,49 +43,7 @@ export async function GET(request: NextRequest) {
     const latitude = searchParams.get("latitude") || "13.6192";
     const longitude = searchParams.get("longitude") || "123.1814";
 
-    // 1. Fetch forecast from Open-Meteo API (with past_days=1 to have lookback data for Today's early hours)
-    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=precipitation&timezone=Asia/Singapore&past_days=1&forecast_days=3`;
-    
-    const weatherResponse = await fetch(openMeteoUrl);
-    if (!weatherResponse.ok) {
-      throw new Error(`Open-Meteo API returned status ${weatherResponse.status}`);
-    }
-    
-    const weatherData = await weatherResponse.json();
-    if (!weatherData.hourly || !weatherData.hourly.time || !weatherData.hourly.precipitation) {
-      throw new Error("Invalid hourly data returned from weather API");
-    }
-    
-    const times: string[] = weatherData.hourly.time;
-    const precipitation: number[] = weatherData.hourly.precipitation;
-
-    // 2. Compute rolling features across all hourly points
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const features: any[] = [];
-    for (let i = 0; i < times.length; i++) {
-      const rain_intensity_1h = precipitation[i];
-
-      // 6h rolling sum
-      let sum6h = 0;
-      for (let j = Math.max(0, i - 5); j <= i; j++) {
-        sum6h += precipitation[j];
-      }
-
-      // 24h rolling sum
-      let sum24h = 0;
-      for (let j = Math.max(0, i - 23); j <= i; j++) {
-        sum24h += precipitation[j];
-      }
-
-      features.push({
-        time: times[i],
-        rain_intensity_1h,
-        rain_accum_6h: parseFloat(sum6h.toFixed(2)),
-        rain_accum_24h: parseFloat(sum24h.toFixed(2)),
-      });
-    }
-
-    // 3. Resolve target dates in Asia/Singapore timezone
+    // 1. Resolve target dates in Asia/Singapore timezone
     const localTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Singapore" }));
     
     const today = new Date(localTime);
@@ -100,123 +57,89 @@ export async function GET(request: NextRequest) {
     dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
     const dayAfterTomorrowStr = dayAfterTomorrow.toISOString().split("T")[0];
 
-    // Filter features for Today, Tomorrow, and Day After Tomorrow
-    const todayFeatures = features.filter((f) => f.time.startsWith(todayStr));
-    const tomorrowFeatures = features.filter((f) => f.time.startsWith(tomorrowStr));
-    const dayAfterTomorrowFeatures = features.filter((f) => f.time.startsWith(dayAfterTomorrowStr));
+    const startOfToday = `${todayStr}T00:00:00`;
+    const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59`;
 
-    // Combine them into a flat array for a single bulk Python subprocess call
-    const allFeatures = [...todayFeatures, ...tomorrowFeatures, ...dayAfterTomorrowFeatures];
-    if (allFeatures.length === 0) {
-      throw new Error("No forecast intervals resolved for predicted boundaries");
+    // 2. Fetch predictions from Supabase
+    let { data: dbRecords, error: dbError } = await supabase
+      .from("rainfall_prediction_logs")
+      .select("*")
+      .gte("forecast_time", startOfToday)
+      .lte("forecast_time", endOfDayAfterTomorrow)
+      .order("forecast_time", { ascending: true });
+
+    if (dbError) {
+      throw new Error(`Supabase query failed: ${dbError.message}`);
     }
 
-    const predictInputs = allFeatures.map((f) => ({
-      rain_intensity_1h: f.rain_intensity_1h,
-      rain_accum_6h: f.rain_accum_6h,
-      rain_accum_24h: f.rain_accum_24h,
-    }));
-
-    let probabilities: number[] = [];
-    const backendApiUrl = process.env.BACKEND_API_URL;
-
-    if (backendApiUrl) {
-      const response = await fetch(`${backendApiUrl}/predict`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(predictInputs),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Backend API returned status ${response.status}`);
-      }
-
-      const resJson = await response.json();
-      probabilities = resJson.probabilities;
-    } else {
-      let rootDir = process.cwd();
-      if (!fs.existsSync(path.join(rootDir, "venv")) && fs.existsSync(path.join(rootDir, "..", "venv"))) {
-        rootDir = path.join(rootDir, "..");
-      }
+    // 3. Fallback: If no records are found in database, trigger a backend update first
+    if (!dbRecords || dbRecords.length === 0) {
+      console.log("No prediction logs found in database for current timeframe. Triggering backend update...");
+      const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
       
-      const pythonPath = path.join(rootDir, "venv", "Scripts", "python.exe");
-      const scriptPath = path.join(rootDir, "backend", "predict_json.py");
-
-      if (!fs.existsSync(pythonPath)) {
-        throw new Error(`Python executable not found at ${pythonPath}`);
+      try {
+        const updateRes = await fetch(`${backendApiUrl}/update`, {
+          method: "POST"
+        });
+        if (updateRes.ok) {
+          // Retry fetching from Supabase
+          const retryResult = await supabase
+            .from("rainfall_prediction_logs")
+            .select("*")
+            .gte("forecast_time", startOfToday)
+            .lte("forecast_time", endOfDayAfterTomorrow)
+            .order("forecast_time", { ascending: true });
+          
+          if (retryResult.data && retryResult.data.length > 0) {
+            dbRecords = retryResult.data;
+          }
+        }
+      } catch (err: any) {
+        console.error("Failed to automatically update predictions:", err.message);
       }
-      if (!fs.existsSync(scriptPath)) {
-        throw new Error(`Python bridge script not found at ${scriptPath}`);
-      }
-
-      probabilities = await runPythonPrediction(pythonPath, scriptPath, predictInputs);
     }
 
-    // Combine predictions with forecast features
-    const allPredictions = allFeatures.map((f, idx) => ({
-      time: f.time,
-      hour: new Date(f.time).getHours(),
-      rain_intensity_1h: f.rain_intensity_1h,
-      rain_accum_6h: f.rain_accum_6h,
-      rain_accum_24h: f.rain_accum_24h,
-      probability: parseFloat(probabilities[idx].toFixed(6)),
-    }));
+    if (!dbRecords || dbRecords.length === 0) {
+      throw new Error("No prediction records available in the database.");
+    }
 
-    // Slice predictions back into respective days
-    const todayPredictions = allPredictions.slice(0, todayFeatures.length);
-    const tomorrowPredictions = allPredictions.slice(todayFeatures.length, todayFeatures.length + tomorrowFeatures.length);
-    const dayAfterTomorrowPredictions = allPredictions.slice(todayFeatures.length + tomorrowFeatures.length);
-
-    // 6. Calculate stats for each day block
+    // 4. Format database records to match expected frontend structure
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function calculateDailyStats(predictions: any[]) {
-      let peakProb = 0;
-      let peakHour = 0;
-      let totalRain = 0;
-      let avgProb = 0;
-
-      predictions.forEach((p) => {
-        if (p.probability > peakProb) {
-          peakProb = p.probability;
-          peakHour = p.hour;
-        }
-        totalRain += p.rain_intensity_1h;
-        avgProb += p.probability;
-      });
-
-      avgProb = predictions.length > 0 ? avgProb / predictions.length : 0;
-
-      let riskLevel = "Safe";
-      if (peakProb > 0.5) riskLevel = "High";
-      else if (peakProb > 0.2) riskLevel = "Moderate";
-      else if (peakProb > 0.05) riskLevel = "Low";
+    const allPredictions = dbRecords.map((r: any) => {
+      let formattedTime = r.forecast_time;
+      if (typeof formattedTime === "string") {
+        // "2026-05-19T00:00:00+00:00" -> "2026-05-19T00:00"
+        // "2026-05-19 00:00:00" -> "2026-05-19T00:00"
+        formattedTime = formattedTime.replace(" ", "T").substring(0, 16);
+      }
 
       return {
-        summary: {
-          risk_level: riskLevel,
-          peak_probability: parseFloat((peakProb * 100).toFixed(4)),
-          peak_hour: peakHour,
-          average_probability: parseFloat((avgProb * 100).toFixed(4)),
-          total_precipitation: parseFloat(totalRain.toFixed(2)),
-        },
-        hourly: predictions,
+        time: formattedTime,
+        hour: new Date(formattedTime).getHours(),
+        rain_intensity_1h: r.rain_intensity_1h,
+        rain_accum_6h: r.rain_accum_6h,
+        rain_accum_24h: r.rain_accum_24h,
+        probability: parseFloat(r.predicted_probability.toFixed(6)),
       };
-    }
+    });
+
+    // 5. Slice predictions into respective days
+    const todayPredictions = allPredictions.filter((p) => p.time.startsWith(todayStr));
+    const tomorrowPredictions = allPredictions.filter((p) => p.time.startsWith(tomorrowStr));
+    const dayAfterTomorrowPredictions = allPredictions.filter((p) => p.time.startsWith(dayAfterTomorrowStr));
 
     const todayBlock = calculateDailyStats(todayPredictions);
     const tomorrowBlock = calculateDailyStats(tomorrowPredictions);
     const dayAfterTomorrowBlock = calculateDailyStats(dayAfterTomorrowPredictions);
 
-    // Return combined 3-day structured payload
+    // 6. Return combined 3-day structured payload
     return NextResponse.json({
       location: {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
-        elevation: weatherData.elevation,
-        timezone: weatherData.timezone,
-        timezone_abbreviation: weatherData.timezone_abbreviation,
+        elevation: 20.0, // Naga City average elevation
+        timezone: "Asia/Singapore",
+        timezone_abbreviation: "+08",
       },
       days: {
         today: {
