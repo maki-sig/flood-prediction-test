@@ -75,13 +75,25 @@ async def update_predictions(
     # 1. Secret Token Authorization (Security Check)
     update_secret = os.environ.get("UPDATE_SECRET")
     if update_secret:
+        # Clean any quotes/spaces from the environment variable itself
+        update_secret = update_secret.strip('\'" ')
+        
         auth_header = request.headers.get("Authorization")
         token = None
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
+        if auth_header:
+            auth_header = auth_header.strip()
+            if auth_header.startswith("Bearer "):
+                parts = auth_header.split(" ")
+                if len(parts) > 1:
+                    token = parts[1]
+            else:
+                token = auth_header  # Fallback to raw header value if Bearer is missing
         
         if not token:
             token = secret
+            
+        if token:
+            token = token.strip('\'" ')  # Clean any quotes/spaces from client input
             
         if token != update_secret:
             raise HTTPException(status_code=401, detail="Unauthorized: Invalid secret token.")
