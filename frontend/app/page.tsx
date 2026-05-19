@@ -128,6 +128,9 @@ export default function Home() {
   // Live timer for next forecast sync
   const [timeUntilNextHour, setTimeUntilNextHour] = useState<string>("59:59");
 
+  // Live clock for Philippine Standard Time (PST)
+  const [phTime, setPhTime] = useState<string>("");
+
   // Leaflet.js Dynamic CDNs & Map Refs
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [mapStyle, setMapStyle] = useState<'dark' | 'light' | 'satellite'>('dark');
@@ -228,6 +231,27 @@ export default function Home() {
 
     calculateCountdown();
     const interval = setInterval(calculateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Live clock for Philippine Standard Time (PST)
+  useEffect(() => {
+    const updateTime = () => {
+      try {
+        const formatter = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Manila",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        });
+        setPhTime(formatter.format(new Date()));
+      } catch (e) {
+        console.error("Failed to format time:", e);
+      }
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -425,12 +449,15 @@ export default function Home() {
             <span className="text-blue-600 dark:text-blue-400 font-bold animate-pulse">{timeUntilNextHour}</span>
           </div>
 
-          <div className="flex items-center justify-center gap-2 h-7 px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
-            <span className="flex h-1.5 w-1.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-            </span>
-            <span className="text-safe-text font-bold uppercase tracking-wider">ONLINE</span>
+          <div className="flex items-center justify-center gap-2 h-7 px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img 
+              src="https://flagsapi.com/PH/flat/64.png" 
+              alt="Philippines Flag" 
+              className="w-3.5 h-3.5 object-contain select-none" 
+            />
+            <span className="text-text-subtext font-bold uppercase tracking-wider">PST:</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold tracking-wider">{phTime || "12:00:00 AM"}</span>
           </div>
 
           <button
