@@ -16,7 +16,7 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FLOWS | ML-Driven Flood Prediction Module",
+  title: "FLOWS - Flood Level Observation and Warning System",
   description: "Advanced machine learning predictive flood intelligence dashboard for Naga City, Philippines.",
 };
 
