@@ -49,27 +49,27 @@ function getManilaDateStrings() {
     second: "2-digit",
     hour12: false,
   });
-  
+
   const parts = formatter.formatToParts(new Date());
   const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
-  
+
   const year = partMap.year;
   const month = partMap.month;
   const day = partMap.day;
-  
+
   const todayStr = `${year}-${month}-${day}`;
-  
+
   // Calculate relative days purely using UTC calculations to bypass server offset bias
   const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
-  
+
   const tomorrow = new Date(date);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const tomorrowStr = tomorrow.toISOString().split("T")[0];
-  
+
   const dayAfterTomorrow = new Date(date);
   dayAfterTomorrow.setUTCDate(dayAfterTomorrow.getUTCDate() + 2);
   const dayAfterTomorrowStr = dayAfterTomorrow.toISOString().split("T")[0];
-  
+
   return { todayStr, tomorrowStr, dayAfterTomorrowStr };
 }
 
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     // 2. Fetch predictions from Supabase
     let dbRecords = null;
     let currentCount = 0;
-    
+
     if (!forceUpdate) {
       const { data, error: dbError } = await supabase
         .from("rainfall_prediction_logs")
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
     if (!dbRecords || currentCount < expectedCount || forceUpdate) {
       console.log(`[Fullstack Sync] Triggering background update (Force=${forceUpdate}, Count=${currentCount}/${expectedCount})...`);
       const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
-      
+
       const updateSecret = process.env.UPDATE_SECRET;
       const headers: HeadersInit = {};
       if (updateSecret) {
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
             .gte("forecast_time", startOfToday)
             .lte("forecast_time", endOfDayAfterTomorrow)
             .order("forecast_time", { ascending: true });
-          
+
           if (retryResult.data && retryResult.data.length > 0) {
             dbRecords = retryResult.data;
           }
@@ -203,7 +203,7 @@ export async function GET(request: NextRequest) {
       location: {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
-        elevation: 20.0,
+        elevation: 5.0,
         timezone: "Asia/Manila",
         timezone_abbreviation: "PST",
       },
@@ -222,7 +222,7 @@ export async function GET(request: NextRequest) {
         },
       },
     });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "An unexpected error occurred" },
