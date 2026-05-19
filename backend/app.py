@@ -62,22 +62,6 @@ async def update_predictions(latitude: float = 13.6192, longitude: float = 123.1
     supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
     
-    # Secure logging to debug keys on Render
-    print("--- Supabase Environment Debug Info ---")
-    if supabase_url:
-        print(f"SUPABASE_URL: Length={len(supabase_url)}, Starts with={supabase_url[:12]}, Ends with={supabase_url[-5:]}")
-        if '"' in supabase_url or "'" in supabase_url:
-            print("WARNING: SUPABASE_URL contains quotes! Remove quotes in Render settings.")
-    else:
-        print("SUPABASE_URL is not set.")
-        
-    if supabase_key:
-        print(f"SUPABASE_KEY: Length={len(supabase_key)}, Starts with={supabase_key[:12]}, Ends with={supabase_key[-5:]}")
-        if '"' in supabase_key or "'" in supabase_key:
-            print("WARNING: SUPABASE_KEY contains quotes! Remove quotes in Render settings.")
-    else:
-        print("SUPABASE_KEY is not set.")
-    print("---------------------------------------")
 
     if not supabase_url or not supabase_key:
         raise HTTPException(status_code=500, detail="Supabase environment variables (SUPABASE_URL, SUPABASE_KEY) are not configured.")

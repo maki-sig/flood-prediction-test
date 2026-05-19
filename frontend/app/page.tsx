@@ -77,7 +77,6 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
 
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
@@ -177,11 +176,10 @@ export default function Home() {
   }, []);
 
   // Fetch prediction function
-  const fetchPrediction = useCallback(async (isManualSync = false) => {
-    if (isManualSync) setSyncing(true);
-    else setLoading(true);
+  const fetchPrediction = useCallback(async () => {
+    setLoading(true);
     try {
-      const url = `/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}${isManualSync ? "&update=true" : ""}`;
+      const url = `/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Server returned error ${res.status}`);
@@ -198,7 +196,6 @@ export default function Home() {
       // Fail silently as error is not used in UI
     } finally {
       setLoading(false);
-      setSyncing(false);
     }
   }, [selectedPeriod]);
 
@@ -660,27 +657,27 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Absolute floating premium risk legend bottom-right of map - Responsive */}
-            <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 bg-bg-mantle border border-border-surface px-2 py-1 md:px-3 md:py-2.5 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-2 z-20 shadow-2xl min-w-0 md:min-w-[155px] max-w-[90vw] md:max-w-none">
-              <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1.5 mb-0.5 hidden md:block">
+            {/* Absolute floating premium risk legend bottom-right of map - Responsive Grid */}
+            <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 bg-bg-mantle border border-border-surface px-3 py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1.5 z-20 shadow-2xl w-[88vw] sm:w-auto sm:min-w-[160px] md:min-w-[160px]">
+              <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1 mb-0.5">
                 Flood Probability
               </span>
-              <div className="flex flex-row md:flex-col gap-2 md:gap-1.5">
-                <div className="flex items-center gap-1 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Safe (&lt;1%)</span>
+              <div className="grid grid-cols-2 md:flex md:flex-col gap-x-4 gap-y-1.5 md:gap-1.5">
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <span className="w-2.5 h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20 shrink-0" />
+                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">Safe (&lt;1%)</span>
                 </div>
-                <div className="flex items-center gap-1 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Low (1-10%)</span>
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <span className="w-2.5 h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20 shrink-0" />
+                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">Low (1-10%)</span>
                 </div>
-                <div className="flex items-center gap-1 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Mod (10-35%)</span>
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <span className="w-2.5 h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20 shrink-0" />
+                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">Mod (10-35%)</span>
                 </div>
-                <div className="flex items-center gap-1 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">High (&gt;35%)</span>
+                <div className="flex items-center gap-1.5 md:gap-2">
+                  <span className="w-2.5 h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20 shrink-0" />
+                  <span className="text-[7.5px] md:text-[8.5px] font-normal text-text-text truncate">High (&gt;35%)</span>
                 </div>
               </div>
             </div>
