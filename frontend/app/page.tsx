@@ -1,6 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
+import dynamic from "next/dynamic";
+
+const FloodMap = dynamic(() => import("./components/FloodMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
+      <div className="w-6 h-6 border-2 border-blue-600 dark:border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <span className="text-[10px] font-mono tracking-widest text-blue-600 dark:text-blue-400 uppercase">Loading Cartographic Engine...</span>
+    </div>
+  ),
+});
 
 interface HourlyData {
   time: string;
@@ -131,53 +142,6 @@ export default function Home() {
   // Live clock for Philippine Standard Time (PST)
   const [phTime, setPhTime] = useState<string>("");
 
-  // Leaflet.js Dynamic CDNs & Map Refs
-  const [leafletLoaded, setLeafletLoaded] = useState(false);
-  const [mapStyle, setMapStyle] = useState<'dark' | 'light' | 'satellite'>('dark');
-
-  // Synchronize map style with system theme selection
-  useEffect(() => {
-    if (theme === "light") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMapStyle("light");
-    } else {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMapStyle("dark");
-    }
-  }, [theme]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [mapInstance, setMapInstance] = useState<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tileLayerRef = React.useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const polygonRef = React.useRef<any>(null);
-
-  // Load Leaflet Script and CSS dynamically on the client side
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).L) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLeafletLoaded(true);
-      return;
-    }
-
-    const cssLink = document.createElement("link");
-    cssLink.id = "leaflet-css";
-    cssLink.rel = "stylesheet";
-    cssLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(cssLink);
-
-    const jsScript = document.createElement("script");
-    jsScript.id = "leaflet-js";
-    jsScript.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    jsScript.onload = () => {
-      setLeafletLoaded(true);
-    };
-    document.head.appendChild(jsScript);
-  }, []);
-
   // Fetch prediction function
   const fetchPrediction = useCallback(async () => {
     setLoading(true);
@@ -268,117 +232,6 @@ export default function Home() {
     if (!selectedHourDetails) return null;
     return getProbabilityCategory(selectedHourDetails.probability, theme);
   }, [selectedHourDetails, theme]);
-
-  // Initialize and Maintain the Leaflet GIS Map
-  useEffect(() => {
-    if (!leafletLoaded || !data) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const L = (window as any).L;
-    if (!L) return;
-
-    // Set up Leaflet Map inside #flows-leaflet-map
-    const mapInstance = L.map("flows-leaflet-map", {
-      zoomControl: false,
-      attributionControl: false,
-      fadeAnimation: false
-    }).setView([13.635, 123.250], 12);
-
-    // Dynamic Attribution pinned neatly
-    L.control.attribution({ prefix: false }).addTo(mapInstance);
-
-    // User's requested city bounds polygon coordinates
-    const polygonCoords: [number, number][] = [
-      [13.609968789298009, 123.238264647267],
-      [13.603295049815724, 123.18504962357763],
-      [13.625651336134831, 123.17440661883975],
-      [13.647338250079457, 123.19431933738156],
-      [13.662351100172332, 123.25028094293877],
-      [13.67380990980166, 123.28804495293048],
-      [13.670041129846703, 123.29437332892063],
-      [13.674735584354098, 123.30273542780482],
-      [13.674263815340117, 123.32482711860592],
-      [13.654805049817684, 123.37582600721545],
-      [13.650044097448697, 123.31723756354909],
-      [13.609968789298009, 123.238264647267]
-    ];
-
-    // Determine initial color style
-    const category = getProbabilityCategory(selectedHourDetails?.probability || 0, theme);
-
-    const polygon = L.polygon(polygonCoords, {
-      color: category.hex,
-      fillColor: category.hex,
-      fillOpacity: theme === "dark" ? 0.18 : 0.14,
-      weight: 2,
-      opacity: 0.85
-    }).addTo(mapInstance);
-
-    polygonRef.current = polygon;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMapInstance(mapInstance);
-
-    // Automatically fit the map view smoothly bounds
-    mapInstance.fitBounds(polygon.getBounds(), {
-      padding: [40, 40]
-    });
-
-    return () => {
-      mapInstance.remove();
-      setMapInstance(null);
-    };
-  }, [leafletLoaded, data]);
-
-  // Dynamically swap the active tile layer based on mapStyle selection
-  useEffect(() => {
-    if (!leafletLoaded || !mapInstance) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const L = (window as any).L;
-    if (!L) return;
-
-    // Remove existing tile layer if any
-    if (tileLayerRef.current) {
-      tileLayerRef.current.remove();
-    }
-
-    let url = "";
-    let attrib = "";
-
-    if (mapStyle === "dark") {
-      url = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-      attrib = "&copy; CARTO";
-    } else if (mapStyle === "light") {
-      url = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-      attrib = "&copy; CARTO";
-    } else {
-      url = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-      attrib = "&copy; Esri";
-    }
-
-    const newLayer = L.tileLayer(url, {
-      maxZoom: 20,
-      attribution: attrib,
-      subdomains: "abcd"
-    }).addTo(mapInstance);
-
-    tileLayerRef.current = newLayer;
-  }, [mapStyle, leafletLoaded, mapInstance]);
-
-  // Dynamically update polygon color styles on selected hour or theme change
-  useEffect(() => {
-    if (!leafletLoaded || !selectedHourDetails) return;
-    const category = getProbabilityCategory(selectedHourDetails.probability, theme);
-
-    if (polygonRef.current) {
-      polygonRef.current.setStyle({
-        color: category.hex,
-        fillColor: category.hex,
-        fillOpacity: theme === "dark" ? 0.18 : 0.14,
-        weight: 2,
-        opacity: 0.85
-      });
-    }
-  }, [selectedHourDetails, leafletLoaded, theme]);
-
 
   // SVG Chart Dimensions and Math
   const chartHeight = 220;
@@ -628,87 +481,12 @@ export default function Home() {
 
           {/* DOCKED MAP PANEL (Right, fills map height) */}
           <div className="flex-1 h-[400px] md:h-full relative z-10 bg-[#11111b]">
-            <div id="flows-leaflet-map" className="w-full h-full z-10" />
-
-            {!leafletLoaded && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
-                <div className="w-6 h-6 border-2 border-blue-600 dark:border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-[10px] font-mono tracking-widest text-blue-600 dark:text-blue-400 uppercase">Loading Cartographic Engine...</span>
-              </div>
-            )}
-
-            {/* Custom Map Menubar (Top Right of Map) */}
-            {/* Custom Map Menubar (Top Right of Map) - Responsive */}
-            <div className="absolute top-4 md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[90vw] md:max-w-none">
-              {/* Zoom & Reset Buttons */}
-              <div className="flex items-center gap-1 border-r border-border-surface pr-1.5 md:pr-2.5">
-                <button
-                  title="Zoom In"
-                  onClick={() => mapInstance?.zoomIn()}
-                  className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
-                >
-                  ＋
-                </button>
-                <button
-                  title="Zoom Out"
-                  onClick={() => mapInstance?.zoomOut()}
-                  className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
-                >
-                  －
-                </button>
-                <button
-                  title="Reset Map Position"
-                  onClick={() => mapInstance?.flyTo([13.635, 123.250], 12, { animate: true, duration: 1.2 })}
-                  className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text rounded-[4px] cursor-pointer transition-colors"
-                >
-                  <svg className="w-3 h-3 md:w-3.5 md:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14 0a5 5 0 11-10 0 5 5 0 0110 0z" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Map Style Selector */}
-              <div className="flex items-center gap-1 pl-0.5">
-                <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-wider mr-0.5 md:mr-1">STYLE:</span>
-                {(["dark", "light", "satellite"] as const).map((style) => (
-                  <button
-                    key={style}
-                    onClick={() => setMapStyle(style)}
-                    className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${mapStyle === style
-                      ? "bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white"
-                      : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text"
-                      }`}
-                  >
-                    {style}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Absolute floating premium risk legend - vertical on mobile, bottom-right always */}
-            <div className="absolute bottom-4 right-3 md:bottom-6 md:right-6 bg-bg-mantle border border-border-surface px-2.5 py-2 md:px-3 md:py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1 md:gap-1.5 z-20 shadow-2xl min-w-[90px] md:min-w-[160px]">
-              <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1 mb-0.5">
-                Flood Probability
-              </span>
-              <div className="flex flex-col gap-1 md:gap-1.5">
-                <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-emerald-500 border border-emerald-500/20 shrink-0" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Safe (&lt;1%)</span>
-                </div>
-                <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20 shrink-0" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Low (1-10%)</span>
-                </div>
-                <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20 shrink-0" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Mod (10-35%)</span>
-                </div>
-                <div className="flex items-center gap-1.5 md:gap-2">
-                  <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20 shrink-0" />
-                  <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">High (&gt;35%)</span>
-                </div>
-              </div>
-            </div>
+            <FloodMap
+              data={data}
+              theme={theme}
+              selectedHourDetails={selectedHourDetails}
+              getProbabilityCategory={getProbabilityCategory}
+            />
           </div>
 
         </section>
