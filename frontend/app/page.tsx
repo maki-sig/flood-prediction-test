@@ -424,7 +424,7 @@ export default function Home() {
         {/* Live System Indicators & Theme Toggle */}
         <div className="flex items-center gap-4 font-mono text-[10px] text-text-subtext">
           <div className="flex items-center justify-center gap-2 h-7 px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
-            <span className="text-text-subtext font-bold">NEXT FETCH IN:</span>
+            <span className="text-text-subtext font-bold">NEXT UPDATE IN:</span>
             <span className="text-blue-600 dark:text-blue-400 font-bold animate-pulse">{timeUntilNextHour}</span>
           </div>
 
