@@ -131,7 +131,7 @@ async def update_predictions(
 
     try:
         # 1. Fetch from Open-Meteo
-        open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=Asia/Singapore&past_days=1&forecast_days=3"
+        open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=GMT&past_days=1&forecast_days=3"
         weather_response = requests.get(open_meteo_url)
         if weather_response.status_code != 200:
             raise HTTPException(status_code=500, detail=f"Open-Meteo API returned status {weather_response.status_code}")

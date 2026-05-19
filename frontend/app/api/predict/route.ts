@@ -147,18 +147,41 @@ export async function GET(request: NextRequest) {
       throw new Error("No prediction records available in the database.");
     }
 
-    // 4. Format database records to match expected frontend structure
+    // 4. Format database records to match expected frontend structure in Singapore Time (UTC+8)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allPredictions = dbRecords.map((r: any) => {
-      let formattedTime = r.forecast_time;
-      if (typeof formattedTime === "string") {
-        // Handle timezone suffix safely: "2026-05-19T00:00:00+00:00" -> "2026-05-19T00:00"
-        formattedTime = formattedTime.replace(" ", "T").substring(0, 16);
-      }
+      const dateObj = new Date(r.forecast_time);
+
+      // Resolve the date string in Asia/Singapore timezone (YYYY-MM-DD)
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Singapore",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const parts = formatter.formatToParts(dateObj);
+      const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+      const sgDate = `${partMap.year}-${partMap.month}-${partMap.day}`;
+
+      // Resolve the hour in Asia/Singapore timezone (0-23)
+      const hourFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Singapore",
+        hour: "2-digit",
+        hour12: false,
+      });
+      const hourParts = hourFormatter.formatToParts(dateObj);
+      const hourPartMap = Object.fromEntries(hourParts.map(p => [p.type, p.value]));
+      let sgHour = parseInt(hourPartMap.hour);
+      if (sgHour === 24) sgHour = 0;
+
+      // Reconstruct formatted local time string for chart index matching
+      const localHH = sgHour.toString().padStart(2, '0');
+      const timeStr = `${sgDate}T${localHH}:00`;
 
       return {
-        time: formattedTime,
-        hour: new Date(formattedTime).getHours(),
+        time: timeStr,
+        hour: sgHour,
+        sgDate,
         rain_intensity_1h: r.rain_intensity_1h,
         rain_accum_6h: r.rain_accum_6h,
         rain_accum_24h: r.rain_accum_24h,
@@ -166,10 +189,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // 5. Slice predictions into respective days
-    const todayPredictions = allPredictions.filter((p) => p.time.startsWith(todayStr));
-    const tomorrowPredictions = allPredictions.filter((p) => p.time.startsWith(tomorrowStr));
-    const dayAfterTomorrowPredictions = allPredictions.filter((p) => p.time.startsWith(dayAfterTomorrowStr));
+    // 5. Slice predictions into respective days using resolved Singapore calendar dates
+    const todayPredictions = allPredictions.filter((p) => p.sgDate === todayStr);
+    const tomorrowPredictions = allPredictions.filter((p) => p.sgDate === tomorrowStr);
+    const dayAfterTomorrowPredictions = allPredictions.filter((p) => p.sgDate === dayAfterTomorrowStr);
 
     const todayBlock = calculateDailyStats(todayPredictions);
     const tomorrowBlock = calculateDailyStats(tomorrowPredictions);
