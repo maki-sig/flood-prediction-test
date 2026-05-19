@@ -166,7 +166,8 @@ async def update_predictions(
                 "rain_intensity_1h": float(row['rain_intensity_1h']),
                 "rain_accum_6h": float(row['rain_accum_6h']),
                 "rain_accum_24h": float(row['rain_accum_24h']),
-                "predicted_probability": float(row['predicted_probability'])
+                "predicted_probability": float(row['predicted_probability']),
+                "created_at": datetime.now(timezone.utc).isoformat()
             })
             
         # 5. Initialize Supabase and Upsert
