@@ -114,9 +114,16 @@ export async function GET(request: NextRequest) {
       console.log(`[Fullstack Sync] Triggering background update (Force=${forceUpdate}, Count=${currentCount}/${expectedCount})...`);
       const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
       
+      const updateSecret = process.env.UPDATE_SECRET;
+      const headers: HeadersInit = {};
+      if (updateSecret) {
+        headers["Authorization"] = `Bearer ${updateSecret}`;
+      }
+
       try {
-        const updateRes = await fetch(`${backendApiUrl}/update?latitude=${latitude}&longitude=${longitude}`, {
-          method: "POST"
+        const updateRes = await fetch(`${backendApiUrl}/update?latitude=${latitude}&longitude=${longitude}${forceUpdate ? "&force=true" : ""}`, {
+          method: "POST",
+          headers
         });
         if (updateRes.ok) {
           // Retry fetching the freshly populated data from Supabase

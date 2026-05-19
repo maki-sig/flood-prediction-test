@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+from datetime import datetime, timezone, timedelta
 import joblib
 import pandas as pd
 import os
@@ -55,17 +56,64 @@ async def predict(items: List[FeatureItem]):
 
 @app.post("/update")
 @app.get("/update")
-async def update_predictions(latitude: float = 13.6192, longitude: float = 123.1814):
+async def update_predictions(
+    request: Request,
+    latitude: float = 13.6192,
+    longitude: float = 123.1814,
+    secret: Optional[str] = None,
+    force: bool = False
+):
     import requests
     from supabase import create_client, Client
     
     supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
     
-
     if not supabase_url or not supabase_key:
         raise HTTPException(status_code=500, detail="Supabase environment variables (SUPABASE_URL, SUPABASE_KEY) are not configured.")
+
+    # 1. Secret Token Authorization (Security Check)
+    update_secret = os.environ.get("UPDATE_SECRET")
+    if update_secret:
+        auth_header = request.headers.get("Authorization")
+        token = None
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
         
+        if not token:
+            token = secret
+            
+        if token != update_secret:
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid secret token.")
+
+    # 2. Temporal Cooldown (45-Minute Rate Limiting)
+    if not force:
+        try:
+            temp_client = create_client(supabase_url, supabase_key)
+            last_record = temp_client.table("rainfall_prediction_logs") \
+                .select("created_at") \
+                .order("created_at", desc=True) \
+                .limit(1) \
+                .execute()
+                
+            if last_record.data:
+                created_at_str = last_record.data[0]["created_at"]
+                if created_at_str.endswith("Z"):
+                    created_at_str = created_at_str.replace("Z", "+00:00")
+                
+                last_update_time = datetime.fromisoformat(created_at_str)
+                now_utc = datetime.now(timezone.utc)
+                time_diff = now_utc - last_update_time
+                
+                if time_diff < timedelta(minutes=45):
+                    minutes_ago = int(time_diff.total_seconds() / 60)
+                    return {
+                        "status": "skipped",
+                        "message": f"Database updated {minutes_ago} minutes ago. Cooldown active (45m)."
+                    }
+        except Exception as db_err:
+            print(f"Error checking cooldown status: {db_err}")
+
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded on server")
 
