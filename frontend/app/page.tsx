@@ -561,10 +561,6 @@ export default function Home() {
                       <span className="text-text-subtext font-medium">Refresh Interval:</span>
                       <span className="font-mono text-text-text font-semibold">Hourly Sync</span>
                     </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-text-subtext font-medium">Auto-Evaluation:</span>
-                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">Active (Hourly)</span>
-                    </div>
                   </div>
 
                   <p className="text-[11px] font-light leading-relaxed text-text-subtext bg-bg-crust/20 border border-border-surface p-2.5 rounded-[4px] flows-indicator">
