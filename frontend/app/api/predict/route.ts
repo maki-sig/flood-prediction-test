@@ -37,10 +37,10 @@ function calculateDailyStats(predictions: any[]) {
   };
 }
 
-// Resilient fullstack helper to extract date strings in Asia/Singapore timezone (UTC+8)
-function getSingaporeDateStrings() {
+// Resilient fullstack helper to extract date strings in Asia/Manila timezone (UTC+8)
+function getManilaDateStrings() {
   const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Singapore",
+    timeZone: "Asia/Manila",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -79,8 +79,8 @@ export async function GET(request: NextRequest) {
     const latitude = searchParams.get("latitude") || "13.6192";
     const longitude = searchParams.get("longitude") || "123.1814";
 
-    // 1. Resolve exact targets in Asia/Singapore timezone
-    const { todayStr, tomorrowStr, dayAfterTomorrowStr } = getSingaporeDateStrings();
+    // 1. Resolve exact targets in Asia/Manila timezone
+    const { todayStr, tomorrowStr, dayAfterTomorrowStr } = getManilaDateStrings();
 
     const startOfToday = `${todayStr}T00:00:00`;
     const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59`;
@@ -147,14 +147,14 @@ export async function GET(request: NextRequest) {
       throw new Error("No prediction records available in the database.");
     }
 
-    // 4. Format database records to match expected frontend structure in Singapore Time (UTC+8)
+    // 4. Format database records to match expected frontend structure in Manila Time (UTC+8)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allPredictions = dbRecords.map((r: any) => {
       const dateObj = new Date(r.forecast_time);
 
-      // Resolve the date string in Asia/Singapore timezone (YYYY-MM-DD)
+      // Resolve the date string in Asia/Manila timezone (YYYY-MM-DD)
       const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Singapore",
+        timeZone: "Asia/Manila",
         year: "numeric",
         month: "2-digit",
         day: "2-digit",
@@ -163,9 +163,9 @@ export async function GET(request: NextRequest) {
       const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
       const sgDate = `${partMap.year}-${partMap.month}-${partMap.day}`;
 
-      // Resolve the hour in Asia/Singapore timezone (0-23)
+      // Resolve the hour in Asia/Manila timezone (0-23)
       const hourFormatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: "Asia/Singapore",
+        timeZone: "Asia/Manila",
         hour: "2-digit",
         hour12: false,
       });
@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // 5. Slice predictions into respective days using resolved Singapore calendar dates
+    // 5. Slice predictions into respective days using resolved Manila calendar dates
     const todayPredictions = allPredictions.filter((p) => p.sgDate === todayStr);
     const tomorrowPredictions = allPredictions.filter((p) => p.sgDate === tomorrowStr);
     const dayAfterTomorrowPredictions = allPredictions.filter((p) => p.sgDate === dayAfterTomorrowStr);
@@ -204,8 +204,8 @@ export async function GET(request: NextRequest) {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
         elevation: 20.0,
-        timezone: "Asia/Singapore",
-        timezone_abbreviation: "+08",
+        timezone: "Asia/Manila",
+        timezone_abbreviation: "PST",
       },
       days: {
         today: {
