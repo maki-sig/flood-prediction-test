@@ -37,25 +37,50 @@ function calculateDailyStats(predictions: any[]) {
   };
 }
 
+// Resilient fullstack helper to extract date strings in Asia/Singapore timezone (UTC+8)
+function getSingaporeDateStrings() {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(new Date());
+  const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  
+  const year = partMap.year;
+  const month = partMap.month;
+  const day = partMap.day;
+  
+  const todayStr = `${year}-${month}-${day}`;
+  
+  // Calculate relative days purely using UTC calculations to bypass server offset bias
+  const date = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+  
+  const tomorrow = new Date(date);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+  
+  const dayAfterTomorrow = new Date(date);
+  dayAfterTomorrow.setUTCDate(dayAfterTomorrow.getUTCDate() + 2);
+  const dayAfterTomorrowStr = dayAfterTomorrow.toISOString().split("T")[0];
+  
+  return { todayStr, tomorrowStr, dayAfterTomorrowStr };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const latitude = searchParams.get("latitude") || "13.6192";
     const longitude = searchParams.get("longitude") || "123.1814";
 
-    // 1. Resolve target dates in Asia/Singapore timezone
-    const localTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Singapore" }));
-    
-    const today = new Date(localTime);
-    const todayStr = today.toISOString().split("T")[0];
-
-    const tomorrow = new Date(localTime);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split("T")[0];
-
-    const dayAfterTomorrow = new Date(localTime);
-    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
-    const dayAfterTomorrowStr = dayAfterTomorrow.toISOString().split("T")[0];
+    // 1. Resolve exact targets in Asia/Singapore timezone
+    const { todayStr, tomorrowStr, dayAfterTomorrowStr } = getSingaporeDateStrings();
 
     const startOfToday = `${todayStr}T00:00:00`;
     const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59`;
@@ -72,9 +97,13 @@ export async function GET(request: NextRequest) {
       throw new Error(`Supabase query failed: ${dbError.message}`);
     }
 
-    // 3. Fallback: If no records are found in database, trigger a backend update first
-    if (!dbRecords || dbRecords.length === 0) {
-      console.log("No prediction logs found in database for current timeframe. Triggering backend update...");
+    // 3. Resilient Fallback: If no records are found or data is incomplete (e.g. less than 72 hours of forecast logs),
+    // trigger a background update automatically from the Python backend to synchronize.
+    const expectedCount = 72; // 3 days * 24 hours
+    const currentCount = dbRecords?.length || 0;
+
+    if (!dbRecords || currentCount < expectedCount) {
+      console.log(`[Fullstack Fallback] Insufficient prediction records in database (${currentCount}/${expectedCount}). Triggering background update...`);
       const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
       
       try {
@@ -82,7 +111,7 @@ export async function GET(request: NextRequest) {
           method: "POST"
         });
         if (updateRes.ok) {
-          // Retry fetching from Supabase
+          // Retry fetching the freshly populated data from Supabase
           const retryResult = await supabase
             .from("rainfall_prediction_logs")
             .select("*")
@@ -95,7 +124,7 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (err: any) {
-        console.error("Failed to automatically update predictions:", err.message);
+        console.error("[Fullstack Fallback] Failed to automatically sync predictions:", err.message);
       }
     }
 
@@ -108,8 +137,7 @@ export async function GET(request: NextRequest) {
     const allPredictions = dbRecords.map((r: any) => {
       let formattedTime = r.forecast_time;
       if (typeof formattedTime === "string") {
-        // "2026-05-19T00:00:00+00:00" -> "2026-05-19T00:00"
-        // "2026-05-19 00:00:00" -> "2026-05-19T00:00"
+        // Handle timezone suffix safely: "2026-05-19T00:00:00+00:00" -> "2026-05-19T00:00"
         formattedTime = formattedTime.replace(" ", "T").substring(0, 16);
       }
 
@@ -137,7 +165,7 @@ export async function GET(request: NextRequest) {
       location: {
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
-        elevation: 20.0, // Naga City average elevation
+        elevation: 20.0,
         timezone: "Asia/Singapore",
         timezone_abbreviation: "+08",
       },
