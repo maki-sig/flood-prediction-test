@@ -53,6 +53,73 @@ async def predict(items: List[FeatureItem]):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/update")
+@app.get("/update")
+async def update_predictions(latitude: float = 13.6192, longitude: float = 123.1814):
+    import requests
+    from supabase import create_client, Client
+    
+    supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+    supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    
+    if not supabase_url or not supabase_key:
+        raise HTTPException(status_code=500, detail="Supabase environment variables (SUPABASE_URL, SUPABASE_KEY) are not configured.")
+        
+    if model is None:
+        raise HTTPException(status_code=500, detail="Model not loaded on server")
+
+    try:
+        # 1. Fetch from Open-Meteo
+        open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=Asia/Singapore&past_days=1&forecast_days=3"
+        weather_response = requests.get(open_meteo_url)
+        if weather_response.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Open-Meteo API returned status {weather_response.status_code}")
+            
+        weather_data = weather_response.json()
+        hourly = weather_data.get("hourly", {})
+        times = hourly.get("time", [])
+        precipitation = hourly.get("precipitation", [])
+        
+        if not times or not precipitation:
+            raise HTTPException(status_code=500, detail="Invalid hourly data returned from weather API")
+            
+        # 2. Compute rolling features
+        df = pd.DataFrame({
+            'forecast_time': times,
+            'rain_intensity_1h': precipitation
+        })
+        # Calculate rolling sum
+        df['rain_accum_6h'] = df['rain_intensity_1h'].rolling(window=6, min_periods=1).sum().round(2)
+        df['rain_accum_24h'] = df['rain_intensity_1h'].rolling(window=24, min_periods=1).sum().round(2)
+        
+        # 3. Predict
+        cols = ["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]
+        probabilities = model.predict_proba(df[cols])
+        df['predicted_probability'] = [float(p[1]) for p in probabilities]
+        
+        # 4. Format for Supabase
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                "forecast_time": row['forecast_time'],
+                "rain_intensity_1h": float(row['rain_intensity_1h']),
+                "rain_accum_6h": float(row['rain_accum_6h']),
+                "rain_accum_24h": float(row['rain_accum_24h']),
+                "predicted_probability": float(row['predicted_probability'])
+            })
+            
+        # 5. Initialize Supabase and Upsert
+        supabase_client: Client = create_client(supabase_url, supabase_key)
+        res = supabase_client.table("rainfall_prediction_logs").upsert(records, on_conflict="forecast_time").execute()
+        
+        return {
+            "status": "success",
+            "message": f"Successfully fetched, predicted and upserted {len(records)} hourly records into Supabase.",
+            "records_updated": len(records)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/")
 async def root():
     return {
