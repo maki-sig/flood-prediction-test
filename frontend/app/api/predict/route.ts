@@ -85,29 +85,37 @@ export async function GET(request: NextRequest) {
     const startOfToday = `${todayStr}T00:00:00`;
     const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59`;
 
-    // 2. Fetch predictions from Supabase
-    let { data: dbRecords, error: dbError } = await supabase
-      .from("rainfall_prediction_logs")
-      .select("*")
-      .gte("forecast_time", startOfToday)
-      .lte("forecast_time", endOfDayAfterTomorrow)
-      .order("forecast_time", { ascending: true });
+    const forceUpdate = searchParams.get("update") === "true";
 
-    if (dbError) {
-      throw new Error(`Supabase query failed: ${dbError.message}`);
+    // 2. Fetch predictions from Supabase
+    let dbRecords = null;
+    let currentCount = 0;
+    
+    if (!forceUpdate) {
+      const { data, error: dbError } = await supabase
+        .from("rainfall_prediction_logs")
+        .select("*")
+        .gte("forecast_time", startOfToday)
+        .lte("forecast_time", endOfDayAfterTomorrow)
+        .order("forecast_time", { ascending: true });
+
+      if (dbError) {
+        throw new Error(`Supabase query failed: ${dbError.message}`);
+      }
+      dbRecords = data;
+      currentCount = dbRecords?.length || 0;
     }
 
-    // 3. Resilient Fallback: If no records are found or data is incomplete (e.g. less than 72 hours of forecast logs),
+    // 3. Resilient Fallback: If no records are found, data is incomplete, or forceUpdate is requested,
     // trigger a background update automatically from the Python backend to synchronize.
     const expectedCount = 72; // 3 days * 24 hours
-    const currentCount = dbRecords?.length || 0;
 
-    if (!dbRecords || currentCount < expectedCount) {
-      console.log(`[Fullstack Fallback] Insufficient prediction records in database (${currentCount}/${expectedCount}). Triggering background update...`);
+    if (!dbRecords || currentCount < expectedCount || forceUpdate) {
+      console.log(`[Fullstack Sync] Triggering background update (Force=${forceUpdate}, Count=${currentCount}/${expectedCount})...`);
       const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
       
       try {
-        const updateRes = await fetch(`${backendApiUrl}/update`, {
+        const updateRes = await fetch(`${backendApiUrl}/update?latitude=${latitude}&longitude=${longitude}`, {
           method: "POST"
         });
         if (updateRes.ok) {

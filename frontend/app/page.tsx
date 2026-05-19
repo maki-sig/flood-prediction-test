@@ -181,7 +181,8 @@ export default function Home() {
     if (isManualSync) setSyncing(true);
     else setLoading(true);
     try {
-      const res = await fetch(`/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}`);
+      const url = `/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}${isManualSync ? "&update=true" : ""}`;
+      const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`Server returned error ${res.status}`);
       }
