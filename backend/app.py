@@ -96,7 +96,8 @@ async def update_predictions(
             token = token.strip('\'" ')  # Clean any quotes/spaces from client input
             
         if token != update_secret:
-            raise HTTPException(status_code=401, detail="Unauthorized: Invalid secret token.")
+            # Returning 200 OK so that cronjobs that I configured don't disable the job upon consecutive failures
+            return {"status": "error", "message": "Unauthorized: Invalid secret token."}
 
     # 2. Temporal Cooldown (45-Minute Rate Limiting)
     if not force:
