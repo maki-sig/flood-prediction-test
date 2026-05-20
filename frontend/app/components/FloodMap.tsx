@@ -44,11 +44,23 @@ export default function FloodMap({
   useEffect(() => {
     if (!data) return;
 
+    // Explicit global bounds clamped to Bicol/Naga City region to prevent infinite panning
+    const nagaBounds = L.latLngBounds(
+      [13.4, 122.9], // SouthWest corner
+      [13.9, 123.6]  // NorthEast corner
+    );
+
     // Set up Leaflet Map inside #flows-leaflet-map
     const map = L.map("flows-leaflet-map", {
       zoomControl: false,
       attributionControl: false,
-      fadeAnimation: false, scrollWheelZoom: false,
+      fadeAnimation: false,
+      scrollWheelZoom: false,
+      minZoom: 11,
+      maxZoom: 18,
+      maxBounds: nagaBounds,
+      maxBoundsViscosity: 1.0,
+      worldCopyJump: false,
     }).setView([13.635, 123.25], 12);
 
     // Dynamic Attribution pinned neatly
@@ -132,6 +144,7 @@ export default function FloodMap({
         maxZoom: 20,
         attribution: attrib,
         subdomains: "abcd",
+        noWrap: true,
       }).addTo(mapInstance);
 
       tileLayerRef.current = newLayer;
