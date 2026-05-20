@@ -40,15 +40,15 @@ export default function FloodMap({
     }
   }, [theme]);
 
+  // Explicit global bounds clamped to Bicol/Naga City region to prevent infinite panning
+  const nagaBounds: L.LatLngBoundsExpression = [
+    [13.4, 122.9], // SouthWest corner
+    [13.8, 123.4], // NorthEast corner
+  ];
+
   // Initialize Map
   useEffect(() => {
     if (!data) return;
-
-    // Explicit global bounds clamped to Bicol/Naga City region to prevent infinite panning
-    const nagaBounds = L.latLngBounds(
-      [13.4, 122.9], // SouthWest corner
-      [13.9, 123.6]  // NorthEast corner
-    );
 
     // Set up Leaflet Map inside #flows-leaflet-map
     const map = L.map("flows-leaflet-map", {
@@ -61,7 +61,7 @@ export default function FloodMap({
       maxBounds: nagaBounds,
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
-    }).setView([13.635, 123.25], 12);
+    }).setView([13.635, 123.25], 13);
 
     // Dynamic Attribution pinned neatly
     L.control.attribution({ prefix: false }).addTo(map);
@@ -99,10 +99,8 @@ export default function FloodMap({
     polygonRef.current = polygon;
     setMapInstance(map);
 
-    // Automatically fit the map view smoothly bounds
-    map.fitBounds(polygon.getBounds(), {
-      padding: [40, 40],
-    });
+    // Automatically center map to a slightly zoomed-in default view
+    map.setView([13.635, 123.25], 13);
 
     return () => {
       map.remove();
@@ -145,6 +143,7 @@ export default function FloodMap({
         attribution: attrib,
         subdomains: "abcd",
         noWrap: true,
+        bounds: nagaBounds,
       }).addTo(mapInstance);
 
       tileLayerRef.current = newLayer;
@@ -198,7 +197,7 @@ export default function FloodMap({
           <button
             title="Reset Map Position"
             onClick={() =>
-              mapInstance?.flyTo([13.635, 123.25], 12, {
+              mapInstance?.flyTo([13.635, 123.25], 13, {
                 animate: true,
                 duration: 1.2,
               })
