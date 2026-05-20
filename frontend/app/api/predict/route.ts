@@ -73,11 +73,50 @@ function getManilaDateStrings() {
   return { todayStr, tomorrowStr, dayAfterTomorrowStr };
 }
 
+// Helper to fetch records from Supabase
+async function fetchPredictionRecords(startOfToday: string, endOfDayAfterTomorrow: string) {
+  const { data, error } = await supabase
+    .from("rainfall_prediction_logs")
+    .select("*")
+    .gte("forecast_time", startOfToday)
+    .lte("forecast_time", endOfDayAfterTomorrow)
+    .order("forecast_time", { ascending: true });
+
+  if (error) {
+    throw new Error(`Supabase query failed: ${error.message}`);
+  }
+  return data || [];
+}
+
+// Helper to trigger Python backend synchronization
+async function syncWithBackend(latitude: string, longitude: string, force: boolean) {
+  const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
+  const updateSecret = process.env.UPDATE_SECRET;
+
+  const headers: HeadersInit = {};
+  if (updateSecret) {
+    headers["Authorization"] = `Bearer ${updateSecret}`;
+  }
+
+  const queryParams = new URLSearchParams({ latitude, longitude });
+  if (force) queryParams.append("force", "true");
+
+  const response = await fetch(`${backendApiUrl}/update?${queryParams.toString()}`, {
+    method: "POST",
+    headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`Backend update failed with status ${response.status}`);
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const latitude = searchParams.get("latitude") || "13.6192";
     const longitude = searchParams.get("longitude") || "123.1814";
+    const forceUpdate = searchParams.get("update") === "true";
 
     // 1. Resolve exact targets in Asia/Manila timezone
     const { todayStr, tomorrowStr, dayAfterTomorrowStr } = getManilaDateStrings();
@@ -85,20 +124,25 @@ export async function GET(request: NextRequest) {
     const startOfToday = `${todayStr}T00:00:00+08:00`;
     const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59+08:00`;
 
-    // 2. Fetch predictions directly from Supabase
-    const { data: dbRecords, error: dbError } = await supabase
-      .from("rainfall_prediction_logs")
-      .select("*")
-      .gte("forecast_time", startOfToday)
-      .lte("forecast_time", endOfDayAfterTomorrow)
-      .order("forecast_time", { ascending: true });
-
-    if (dbError) {
-      throw new Error(`Supabase query failed: ${dbError.message}`);
+    // 2. Fetch predictions from Supabase
+    let dbRecords = forceUpdate ? [] : await fetchPredictionRecords(startOfToday, endOfDayAfterTomorrow);
+    
+    // 3. Resilient Fallback: Sync with Python backend if data is missing, incomplete, or forced
+    const expectedCount = 72; // 3 days * 24 hours
+    if (dbRecords.length < expectedCount || forceUpdate) {
+      console.log(`[Sync] Triggering background update (Force=${forceUpdate}, Count=${dbRecords.length}/${expectedCount})...`);
+      
+      try {
+        await syncWithBackend(latitude, longitude, forceUpdate);
+        // Retry fetching freshly populated data from Supabase
+        dbRecords = await fetchPredictionRecords(startOfToday, endOfDayAfterTomorrow);
+      } catch (err: any) {
+        console.error("[Fallback Error] Failed to sync predictions:", err.message);
+      }
     }
 
     if (!dbRecords || dbRecords.length === 0) {
-      throw new Error("No prediction records available in the database.");
+      throw new Error("No prediction records available in the database after fallback attempt.");
     }
 
     // 4. Format database records to match expected frontend structure in Manila Time (UTC+8)
