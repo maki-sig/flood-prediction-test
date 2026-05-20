@@ -85,62 +85,16 @@ export async function GET(request: NextRequest) {
     const startOfToday = `${todayStr}T00:00:00+08:00`;
     const endOfDayAfterTomorrow = `${dayAfterTomorrowStr}T23:59:59+08:00`;
 
-    const forceUpdate = searchParams.get("update") === "true";
+    // 2. Fetch predictions directly from Supabase
+    const { data: dbRecords, error: dbError } = await supabase
+      .from("rainfall_prediction_logs")
+      .select("*")
+      .gte("forecast_time", startOfToday)
+      .lte("forecast_time", endOfDayAfterTomorrow)
+      .order("forecast_time", { ascending: true });
 
-    // 2. Fetch predictions from Supabase
-    let dbRecords = null;
-    let currentCount = 0;
-
-    if (!forceUpdate) {
-      const { data, error: dbError } = await supabase
-        .from("rainfall_prediction_logs")
-        .select("*")
-        .gte("forecast_time", startOfToday)
-        .lte("forecast_time", endOfDayAfterTomorrow)
-        .order("forecast_time", { ascending: true });
-
-      if (dbError) {
-        throw new Error(`Supabase query failed: ${dbError.message}`);
-      }
-      dbRecords = data;
-      currentCount = dbRecords?.length || 0;
-    }
-
-    // 3. Resilient Fallback: If no records are found, data is incomplete, or forceUpdate is requested,
-    // trigger a background update automatically from the Python backend to synchronize.
-    const expectedCount = 72; // 3 days * 24 hours
-
-    if (!dbRecords || currentCount < expectedCount || forceUpdate) {
-      console.log(`[Fullstack Sync] Triggering background update (Force=${forceUpdate}, Count=${currentCount}/${expectedCount})...`);
-      const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
-
-      const updateSecret = process.env.UPDATE_SECRET;
-      const headers: HeadersInit = {};
-      if (updateSecret) {
-        headers["Authorization"] = `Bearer ${updateSecret}`;
-      }
-
-      try {
-        const updateRes = await fetch(`${backendApiUrl}/update?latitude=${latitude}&longitude=${longitude}${forceUpdate ? "&force=true" : ""}`, {
-          method: "POST",
-          headers
-        });
-        if (updateRes.ok) {
-          // Retry fetching the freshly populated data from Supabase
-          const retryResult = await supabase
-            .from("rainfall_prediction_logs")
-            .select("*")
-            .gte("forecast_time", startOfToday)
-            .lte("forecast_time", endOfDayAfterTomorrow)
-            .order("forecast_time", { ascending: true });
-
-          if (retryResult.data && retryResult.data.length > 0) {
-            dbRecords = retryResult.data;
-          }
-        }
-      } catch (err: any) {
-        console.error("[Fullstack Fallback] Failed to automatically sync predictions:", err.message);
-      }
+    if (dbError) {
+      throw new Error(`Supabase query failed: ${dbError.message}`);
     }
 
     if (!dbRecords || dbRecords.length === 0) {
