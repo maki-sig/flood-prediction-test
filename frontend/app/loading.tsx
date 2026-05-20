@@ -1,9 +1,6 @@
 export default function Loading() {
   return (
     <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#11111b] text-white flows-root">
-      {/* Dynamic glow decorations */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#cba6f7]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#89b4fa]/10 rounded-full blur-[120px] pointer-events-none" />
       
       <div className="relative flex flex-col items-center gap-6 z-10">
         {/* Pulsing Core */}

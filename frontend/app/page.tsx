@@ -277,12 +277,10 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root">
 
-      {/* Dynamic glow decorations using soft theme-aware colors */}
-      <div className="absolute top-[80vh] left-10 w-80 h-80 bg-[#cba6f7]/5 dark:bg-[#cba6f7]/3 bg-[#cba6f7]/1 rounded-none blur-[100px] pointer-events-none z-0" />
-      <div className="absolute bottom-20 right-10 w-96 h-96 bg-[#89b4fa]/5 dark:bg-[#89b4fa]/3 bg-[#89b4fa]/1 rounded-none blur-[120px] pointer-events-none z-0" />
-
+      {/* Main content wrapper */}
+      
       {/* Header Navigation (Catppuccin Mantle) */}
-      <header className="relative w-full border-b border-border-surface bg-bg-mantle/90 backdrop-blur-md z-30 px-3 md:px-6 py-2.5 md:py-4 flex flex-row items-center justify-between gap-2 flows-header">
+      <header className="relative w-full border-b border-border-surface bg-bg-mantle/95 md:bg-bg-mantle/90 md:backdrop-blur-md z-30 px-3 md:px-6 py-2.5 md:py-4 flex flex-row items-center justify-between gap-2 flows-header">
         <div className="flex items-center gap-2 md:gap-3">
           <div>
             <h1 className="text-[11px] md:text-base font-extrabold tracking-wider uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
@@ -499,7 +497,7 @@ export default function Home() {
         {activeData && chartPoints && (
           <section className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-10 flex flex-col gap-6 z-10 border-b border-border-surface/40">
 
-            <div className="bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col gap-4 flows-card">
+            <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col gap-4 flows-card">
               <div className="flex justify-between items-center flex-wrap gap-4 border-b border-border-surface pb-3">
                 <div>
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
@@ -700,7 +698,7 @@ export default function Home() {
           <section className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 border-b border-border-surface/40">
 
             {/* Hour Inspector Card (Left, 7 cols) */}
-            <div className="lg:col-span-7 bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl relative overflow-hidden">
+            <div className="lg:col-span-7 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl relative overflow-hidden">
               <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-primary-blue-bg to-transparent pointer-events-none rounded-none blur-2xl" />
 
               <div className="flex justify-between items-center border-b border-border-surface pb-2 mb-4">
@@ -754,7 +752,7 @@ export default function Home() {
             </div>
 
             {/* Model Card (Right, 5 cols) */}
-            <div className="lg:col-span-5 bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
+            <div className="lg:col-span-5 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-3 flex items-center gap-2">
                   <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -787,7 +785,7 @@ export default function Home() {
         {activeData && (
           <section className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-6 pb-16 z-10">
 
-            <div className="bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
+            <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-4 flex items-center gap-2">
                   <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
