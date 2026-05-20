@@ -300,7 +300,7 @@ export default function Home() {
           {/* NEXT UPDATE — hidden on smallest screens to save space */}
           <div className="hidden sm:flex items-center justify-center gap-1.5 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
             <span className="text-text-subtext font-bold text-[7px] md:text-[10px]">NEXT UPDATE IN:</span>
-            <span className="text-primary-blue font-bold animate-pulse text-[7px] md:text-[10px]">{timeUntilNextHour}</span>
+            <span className="text-text-text font-bold text-[7px] md:text-[10px]">{timeUntilNextHour}</span>
           </div>
 
           <div className="flex items-center justify-center gap-1 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
@@ -311,7 +311,7 @@ export default function Home() {
               className="w-3 h-3 md:w-3.5 md:h-3.5 object-contain select-none"
             />
             <span className="text-text-subtext font-bold uppercase tracking-wider text-[7px] md:text-[10px]">PST:</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold tracking-wider text-[7px] md:text-[10px]">{phTime || "12:00:00 AM"}</span>
+            <span className="text-text-text font-bold tracking-wider text-[7px] md:text-[10px]">{phTime || "12:00:00 AM"}</span>
           </div>
 
           <button
@@ -471,9 +471,9 @@ export default function Home() {
             </div>
 
             {/* Scroll-down indicators inside the floating sidebar */}
-            <div className="mt-4 pt-2.5 border-t border-border-surface flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest animate-pulse shrink-0">
+            <div className="mt-4 pt-2.5 border-t border-border-surface flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
               <span>Scroll down for timelines</span>
-              <svg className="w-3.5 h-3.5 text-text-muted animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 13l-7 7-7-7m14-6l-7 7-7-7" />
               </svg>
             </div>
@@ -877,6 +877,7 @@ export default function Home() {
     </div>
   );
 }
+
 
 
 
