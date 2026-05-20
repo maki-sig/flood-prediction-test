@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root, :root[data-theme="dark"] {
+:root,
+:root[data-theme="dark"] {
   /* Premium Deep Space Dark Mode */
   --bg-base: #0b0f19;
   --bg-mantle: #111827;
@@ -12,12 +13,25 @@
   --text-text: #f8fafc;
   --text-subtext: #cbd5e1;
   --text-muted: #94a3b8;
-  
+
   --safe-text: #a7f3d0;
   --safe-bg: rgba(16, 185, 129, 0.1);
   --safe-border: rgba(16, 185, 129, 0.3);
   --safe-from: #a7f3d0;
   --safe-to: #5eead4;
+
+  /* Semantic Colors (Dark) */
+  --primary-blue: #3b82f6;
+  --primary-blue-bg: rgba(59, 130, 246, 0.15);
+  --primary-blue-border: rgba(59, 130, 246, 0.4);
+
+  --semantic-yellow: #facc15;
+  --semantic-yellow-bg: rgba(250, 204, 21, 0.15);
+  --semantic-yellow-border: rgba(250, 204, 21, 0.4);
+
+  --semantic-red: #f87171;
+  --semantic-red-bg: rgba(248, 113, 113, 0.15);
+  --semantic-red-border: rgba(248, 113, 113, 0.4);
 
   --scrollbar-track: #0b0f19;
   --scrollbar-thumb: #374151;
@@ -43,6 +57,19 @@
   --safe-from: #065f46;
   --safe-to: #0f766e;
 
+  /* Semantic Colors (Light) - High Contrast WCAG AAA */
+  --primary-blue: #004dc2;
+  --primary-blue-bg: rgba(0, 77, 194, 0.08);
+  --primary-blue-border: rgba(0, 77, 194, 0.3);
+
+  --semantic-yellow: #ca8a04;
+  --semantic-yellow-bg: rgba(202, 138, 4, 0.1);
+  --semantic-yellow-border: rgba(202, 138, 4, 0.35);
+
+  --semantic-red: #c9001f;
+  --semantic-red-bg: rgba(201, 0, 31, 0.08);
+  --semantic-red-border: rgba(201, 0, 31, 0.3);
+
   --scrollbar-track: #f1f5f9;
   --scrollbar-thumb: #cbd5e1;
   --scrollbar-thumb-hover: #94a3b8;
@@ -61,6 +88,15 @@
   --color-safe-border: var(--safe-border);
   --color-safe-from: var(--safe-from);
   --color-safe-to: var(--safe-to);
+  --color-primary-blue: var(--primary-blue);
+  --color-primary-blue-bg: var(--primary-blue-bg);
+  --color-primary-blue-border: var(--primary-blue-border);
+  --color-semantic-yellow: var(--semantic-yellow);
+  --color-semantic-yellow-bg: var(--semantic-yellow-bg);
+  --color-semantic-yellow-border: var(--semantic-yellow-border);
+  --color-semantic-red: var(--semantic-red);
+  --color-semantic-red-bg: var(--semantic-red-bg);
+  --color-semantic-red-border: var(--semantic-red-border);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 }
@@ -172,7 +208,8 @@ body {
   border-top-color: var(--border-surface) !important;
 }
 
-.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
   background: var(--bg-mantle) !important;
   color: var(--text-text) !important;
   border: 1px solid var(--border-surface) !important;
@@ -203,7 +240,7 @@ body {
 
 .leaflet-bar a:hover {
   background-color: var(--border-surface) !important;
-  color: #3b82f6 !important;
+  color: var(--primary-blue) !important;
 }
 
 .leaflet-bar a.leaflet-disabled {
