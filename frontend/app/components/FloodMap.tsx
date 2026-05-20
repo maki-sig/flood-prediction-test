@@ -48,7 +48,7 @@ export default function FloodMap({
     const map = L.map("flows-leaflet-map", {
       zoomControl: false,
       attributionControl: false,
-      fadeAnimation: false,
+      fadeAnimation: false, scrollWheelZoom: false,
     }).setView([13.635, 123.25], 12);
 
     // Dynamic Attribution pinned neatly
@@ -101,11 +101,15 @@ export default function FloodMap({
 
   // Dynamically swap the active tile layer based on mapStyle selection
   useEffect(() => {
-    if (!mapInstance) return;
+    if (!mapInstance || !(mapInstance as any)._container) return;
 
     // Remove existing tile layer if any
     if (tileLayerRef.current) {
-      tileLayerRef.current.remove();
+      try {
+        tileLayerRef.current.remove();
+      } catch (e) {
+        // Ignore if layer is already removed or map is destroyed
+      }
     }
 
     let url = "";
@@ -123,13 +127,18 @@ export default function FloodMap({
       attrib = "&copy; Esri";
     }
 
-    const newLayer = L.tileLayer(url, {
-      maxZoom: 20,
-      attribution: attrib,
-      subdomains: "abcd",
-    }).addTo(mapInstance);
+    try {
+      const newLayer = L.tileLayer(url, {
+        maxZoom: 20,
+        attribution: attrib,
+        subdomains: "abcd",
+      }).addTo(mapInstance);
 
-    tileLayerRef.current = newLayer;
+      tileLayerRef.current = newLayer;
+    } catch (e) {
+      // Map instance is likely unmounted or mid-destruction
+      console.warn("Leaflet error adding layer to map:", e);
+    }
   }, [mapStyle, mapInstance]);
 
   // Dynamically update polygon color styles on selected hour or theme change
@@ -155,21 +164,21 @@ export default function FloodMap({
     <>
       <div id="flows-leaflet-map" className="w-full h-full z-10" />
 
-      {/* Custom Map Menubar (Top Right of Map) - Responsive */}
-      <div className="absolute top-4 md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[90vw] md:max-w-none">
+      {/* Custom Map Menubar (Bottom Center on Mobile, Top Right on Desktop) */}
+      <div className="absolute bottom-4 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[90vw] md:max-w-none">
         {/* Zoom & Reset Buttons */}
         <div className="flex items-center gap-1 border-r border-border-surface pr-1.5 md:pr-2.5">
           <button
             title="Zoom In"
             onClick={() => mapInstance?.zoomIn()}
-            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
+            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
           >
             ＋
           </button>
           <button
             title="Zoom Out"
             onClick={() => mapInstance?.zoomOut()}
-            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
+            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
           >
             －
           </button>
@@ -181,7 +190,7 @@ export default function FloodMap({
                 duration: 1.2,
               })
             }
-            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text rounded-[4px] cursor-pointer transition-colors"
+            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text rounded-[4px] cursor-pointer transition-colors"
           >
             <svg
               className="w-3 h-3 md:w-3.5 md:h-3.5"
@@ -210,8 +219,8 @@ export default function FloodMap({
               onClick={() => setMapStyle(style)}
               className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${
                 mapStyle === style
-                  ? "bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white"
-                  : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-blue-600 dark:hover:text-blue-400 text-text-text"
+                  ? "bg-primary-blue border-primary-blue text-white"
+                  : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text"
               }`}
             >
               {style}
@@ -220,8 +229,8 @@ export default function FloodMap({
         </div>
       </div>
 
-      {/* Absolute floating premium risk legend */}
-      <div className="absolute bottom-4 right-3 md:bottom-6 md:right-6 bg-bg-mantle border border-border-surface px-2.5 py-2 md:px-3 md:py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1 md:gap-1.5 z-20 shadow-2xl min-w-[90px] md:min-w-[160px]">
+      {/* Absolute floating premium risk legend (Top Right on Mobile, Bottom Right on Desktop) */}
+      <div className="absolute top-4 right-3 md:top-auto md:bottom-6 md:right-6 bg-bg-mantle border border-border-surface px-2.5 py-2 md:px-3 md:py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1 md:gap-1.5 z-20 shadow-2xl min-w-[90px] md:min-w-[160px]">
         <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1 mb-0.5">
           Flood Probability
         </span>
@@ -233,19 +242,19 @@ export default function FloodMap({
             </span>
           </div>
           <div className="flex items-center gap-1.5 md:gap-2">
-            <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-sky-500 border border-sky-500/20 shrink-0" />
+            <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-primary-blue border-primary-blue-border shrink-0" />
             <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">
               Low (1-10%)
             </span>
           </div>
           <div className="flex items-center gap-1.5 md:gap-2">
-            <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-amber-500 border border-amber-500/20 shrink-0" />
+            <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-semantic-yellow border-semantic-yellow-border shrink-0" />
             <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">
               Mod (10-35%)
             </span>
           </div>
           <div className="flex items-center gap-1.5 md:gap-2">
-            <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-rose-500 border border-rose-500/20 shrink-0" />
+            <span className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-[2px] bg-semantic-red border-semantic-red-border shrink-0" />
             <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">
               High (&gt;35%)
             </span>
@@ -255,3 +264,6 @@ export default function FloodMap({
     </>
   );
 }
+
+
+

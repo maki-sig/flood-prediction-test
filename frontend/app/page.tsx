@@ -7,8 +7,8 @@ const FloodMap = dynamic(() => import("./components/FloodMap"), {
   ssr: false,
   loading: () => (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
-      <div className="w-6 h-6 border-2 border-blue-600 dark:border-blue-500 border-t-transparent rounded-full animate-spin" />
-      <span className="text-[10px] font-mono tracking-widest text-blue-600 dark:text-blue-400 uppercase">Loading Cartographic Engine...</span>
+      <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
+      <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
     </div>
   ),
 });
@@ -65,22 +65,22 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   } else if (pct < 10.0) {
     return {
       label: "Low Chance of Flooding",
-      colorClass: "text-sky-700 dark:text-sky-200 border-sky-500/20 dark:border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/10",
-      textColor: "text-sky-600 dark:text-sky-400",
+      colorClass: "text-primary-blue border-primary-blue-border bg-primary-blue-bg",
+      textColor: "text-primary-blue",
       hex: theme === "dark" ? "#bae6fd" : "#0284c7"
     };
   } else if (pct < 35.0) {
     return {
       label: "Moderate Chance of Flooding",
-      colorClass: "text-amber-700 dark:text-amber-200 border-amber-500/20 dark:border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/10",
-      textColor: "text-amber-600 dark:text-amber-400",
+      colorClass: "text-semantic-yellow border-semantic-yellow-border bg-semantic-yellow-bg",
+      textColor: "text-semantic-yellow",
       hex: theme === "dark" ? "#fde68a" : "#d97706"
     };
   } else {
     return {
       label: "High Chance of Flooding",
-      colorClass: "text-rose-700 dark:text-rose-200 border-rose-500/20 dark:border-rose-500/30 bg-rose-500/10 dark:bg-rose-500/10",
-      textColor: "text-rose-600 dark:text-rose-400",
+      colorClass: "text-semantic-red border-semantic-red-border bg-semantic-red-bg",
+      textColor: "text-semantic-red",
       hex: theme === "dark" ? "#fecdd3" : "#e11d48"
     };
   }
@@ -278,7 +278,7 @@ export default function Home() {
   }, [activeData, theme]);
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-blue-500/20 selection:text-blue-500 flows-root">
+    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root">
 
       {/* Dynamic glow decorations using soft theme-aware colors */}
       <div className="absolute top-[80vh] left-10 w-80 h-80 bg-[#cba6f7]/5 dark:bg-[#cba6f7]/3 bg-[#cba6f7]/1 rounded-none blur-[100px] pointer-events-none z-0" />
@@ -300,24 +300,24 @@ export default function Home() {
           {/* NEXT UPDATE — hidden on smallest screens to save space */}
           <div className="hidden sm:flex items-center justify-center gap-1.5 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
             <span className="text-text-subtext font-bold text-[7px] md:text-[10px]">NEXT UPDATE IN:</span>
-            <span className="text-blue-600 dark:text-blue-400 font-bold animate-pulse text-[7px] md:text-[10px]">{timeUntilNextHour}</span>
+            <span className="text-text-text font-bold text-[7px] md:text-[10px]">{timeUntilNextHour}</span>
           </div>
 
           <div className="flex items-center justify-center gap-1 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img 
-              src="https://flagsapi.com/PH/flat/64.png" 
-              alt="Philippines Flag" 
-              className="w-3 h-3 md:w-3.5 md:h-3.5 object-contain select-none" 
+            <img
+              src="https://flagsapi.com/PH/flat/64.png"
+              alt="Philippines Flag"
+              className="w-3 h-3 md:w-3.5 md:h-3.5 object-contain select-none"
             />
             <span className="text-text-subtext font-bold uppercase tracking-wider text-[7px] md:text-[10px]">PST:</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold tracking-wider text-[7px] md:text-[10px]">{phTime || "12:00:00 AM"}</span>
+            <span className="text-text-text font-bold tracking-wider text-[7px] md:text-[10px]">{phTime || "12:00:00 AM"}</span>
           </div>
 
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-            className="flex items-center justify-center w-5 h-5 md:w-7 md:h-7 bg-bg-crust/50 border border-border-surface text-text-muted hover:text-blue-600 dark:hover:text-blue-400 rounded-[4px] cursor-pointer transition-colors flows-indicator"
+            className="flex items-center justify-center w-5 h-5 md:w-7 md:h-7 bg-bg-crust/50 border border-border-surface text-text-muted hover:text-primary-blue rounded-[4px] cursor-pointer transition-colors flows-indicator"
           >
             {theme === 'dark' ? (
               /* Sun Icon for Light Mode */
@@ -345,7 +345,7 @@ export default function Home() {
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
                   </svg>
                   Analytics Console
@@ -357,7 +357,7 @@ export default function Home() {
                 <div className="flex flex-col gap-4">
 
                   {/* Timeframe selector tabs with Date display */}
-                  <div className="flex flex-col gap-1.5 border-b border-border-surface pb-3">
+                  <div className="flex flex-col gap-1.5 order-last md:order-none border-t md:border-t-0 pt-4 md:pt-0 md:border-b border-border-surface md:pb-3 mt-2 md:mt-0">
                     <span className="text-[8px] font-bold font-mono tracking-widest uppercase text-[#89b4fa]">
                       EVALUATION TIMEFRAME
                     </span>
@@ -372,7 +372,7 @@ export default function Home() {
                             key={period}
                             onClick={() => setSelectedPeriod(period)}
                             className={`py-1 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
-                              ? "bg-blue-600 dark:bg-blue-500 text-white"
+                              ? "bg-primary-blue text-white"
                               : "text-text-subtext hover:bg-border-surface/50 hover:text-text-text"
                               }`}
                           >
@@ -452,8 +452,8 @@ export default function Home() {
                 <div className="py-20 flex flex-col items-center justify-center gap-3">
                   {loading ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-blue-600 dark:border-blue-500 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-[10px] font-mono tracking-widest text-blue-600 dark:text-blue-400 uppercase">Synchronizing sensor...</span>
+                      <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
+                      <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
                     </>
                   ) : (
                     <>
@@ -471,9 +471,9 @@ export default function Home() {
             </div>
 
             {/* Scroll-down indicators inside the floating sidebar */}
-            <div className="mt-4 pt-2.5 border-t border-border-surface flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest animate-pulse shrink-0">
+            <div className="mt-4 pt-2.5 border-t border-border-surface flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
               <span>Scroll down for timelines</span>
-              <svg className="w-3.5 h-3.5 text-text-muted animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 13l-7 7-7-7m14-6l-7 7-7-7" />
               </svg>
             </div>
@@ -499,7 +499,7 @@ export default function Home() {
               <div className="flex justify-between items-center flex-wrap gap-4 border-b border-border-surface pb-3">
                 <div>
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                    <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
                     </svg>
                     Telemetry Timeline & Forecast Curve
@@ -512,7 +512,7 @@ export default function Home() {
                 {/* Chart Legend (Catppuccin colored markers) */}
                 <div className="flex gap-4 font-mono text-[9px] text-text-subtext uppercase tracking-wider">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-none bg-blue-600 dark:bg-blue-500 inline-block" />
+                    <span className="w-2 h-2 rounded-none bg-primary-blue inline-block" />
                     Rain Intensity (mm/h)
                   </span>
                   <span className="flex items-center gap-1.5">
@@ -555,7 +555,7 @@ export default function Home() {
                         key={`y-left-${ratio}`}
                         x={paddingLeft - 8}
                         y={y + 3}
-                        className="text-[7.5px] font-mono fill-blue-600 dark:fill-blue-400 flows-chart-text-left"
+                        className="text-[7.5px] font-mono fill-primary-blue flows-chart-text-left"
                         textAnchor="end"
                       >
                         {value.toFixed(1)}
@@ -645,7 +645,7 @@ export default function Home() {
                         width={xStride}
                         height={chartHeight - paddingTop - paddingBottom}
                         fill="transparent"
-                        className="cursor-pointer hover:fill-blue-500/[0.04]"
+                        className="cursor-pointer hover:fill-primary-blue-bg"
                         onMouseEnter={() => setSelectedHourIdx(pt.hour)}
                         onClick={() => setSelectedHourIdx(pt.hour)}
                       />
@@ -697,11 +697,11 @@ export default function Home() {
 
             {/* Hour Inspector Card (Left, 7 cols) */}
             <div className="lg:col-span-7 bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-blue-500/5 to-transparent pointer-events-none rounded-none blur-2xl" />
+              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-primary-blue-bg to-transparent pointer-events-none rounded-none blur-2xl" />
 
               <div className="flex justify-between items-center border-b border-border-surface pb-2 mb-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
@@ -753,7 +753,7 @@ export default function Home() {
             <div className="lg:col-span-5 bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-3 flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                   </svg>
                   XGBoost Classifier Architecture
@@ -786,7 +786,7 @@ export default function Home() {
             <div className="bg-bg-mantle/40 backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-4 flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                   Evaluated Logs Timeline & Classifications
@@ -851,9 +851,9 @@ export default function Home() {
       <footer className="w-full border-t border-border-surface bg-bg-crust mt-auto py-5 px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 text-[10px] font-mono text-text-muted uppercase tracking-widest z-20">
         <div className="flex flex-col gap-1">
           <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
-          <span>Made with ❤️ by Botis, M. (<a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">@maki-sig</a>)</span>
+          <span>Made with ❤️ by Botis, M. (<a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">@maki-sig</a>)</span>
         </div>
-        <span>APIs powered by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">OPEN-METEO</a> and <a href="https://render.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">RENDER</a></span>
+        <span>APIs powered by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">OPEN-METEO</a> and <a href="https://render.com/" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">RENDER</a></span>
       </footer>
 
       {/* Scroll to Top Button */}
@@ -864,7 +864,7 @@ export default function Home() {
         title="Scroll to Top"
       >
         {/* Outer Hexagon (Acts as Border) */}
-        <div className="bg-border-surface [clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)] w-[34px] h-[38px] flex items-center justify-center hover:bg-blue-600 dark:hover:bg-blue-400 transition-colors shadow-2xl">
+        <div className="bg-border-surface [clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)] w-[34px] h-[38px] flex items-center justify-center hover:bg-primary-blue transition-colors shadow-2xl">
           {/* Inner Hexagon (Fill) */}
           <div className="bg-bg-mantle [clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)] w-[32px] h-[36px] flex items-center justify-center text-text-muted hover:text-text-text transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -877,3 +877,7 @@ export default function Home() {
     </div>
   );
 }
+
+
+
+
