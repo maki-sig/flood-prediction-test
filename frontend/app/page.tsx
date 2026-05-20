@@ -1,16 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import dynamic from "next/dynamic";
 
 const FloodMap = dynamic(() => import("./components/FloodMap"), {
   ssr: false,
-  loading: () => (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
-      <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-      <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
-    </div>
-  ),
 });
 
 interface HourlyData {
@@ -168,8 +162,11 @@ export default function Home() {
 
   // Initial fetch
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchPrediction();
+    // Defer network fetch to prevent client hydration from locking the main thread on mobile WebKit
+    const timer = setTimeout(() => {
+      fetchPrediction();
+    }, 150);
+    return () => clearTimeout(timer);
   }, []);
 
   // Live countdown timer to the next hour turn (standard open-meteo hourly refresh schedule)
@@ -481,12 +478,19 @@ export default function Home() {
 
           {/* DOCKED MAP PANEL (Right, fills map height) */}
           <div className="flex-1 h-[400px] md:h-full relative z-10 bg-[#11111b]">
-            <FloodMap
-              data={data}
-              theme={theme}
-              selectedHourDetails={selectedHourDetails}
-              getProbabilityCategory={getProbabilityCategory}
-            />
+            <Suspense fallback={
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
+                <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
+                <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
+              </div>
+            }>
+              <FloodMap
+                data={data}
+                theme={theme}
+                selectedHourDetails={selectedHourDetails}
+                getProbabilityCategory={getProbabilityCategory}
+              />
+            </Suspense>
           </div>
 
         </section>
