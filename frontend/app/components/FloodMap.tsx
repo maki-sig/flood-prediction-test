@@ -99,8 +99,12 @@ export default function FloodMap({
     polygonRef.current = polygon;
     setMapInstance(map);
 
-    // Automatically center map to a slightly zoomed-in default view
-    map.setView([13.635, 123.25], 13);
+    // Automatically fit polygon on mobile, or keep zoomed-in default view on desktop
+    if (window.innerWidth < 768) {
+      map.fitBounds(polygon.getBounds(), { padding: [10, 10] });
+    } else {
+      map.setView([13.635, 123.25], 13);
+    }
 
     return () => {
       map.remove();
@@ -196,12 +200,21 @@ export default function FloodMap({
           </button>
           <button
             title="Reset Map Position"
-            onClick={() =>
-              mapInstance?.flyTo([13.635, 123.25], 13, {
-                animate: true,
-                duration: 1.2,
-              })
-            }
+            onClick={() => {
+              const isMobile = window.innerWidth < 768;
+              if (isMobile && polygonRef.current) {
+                mapInstance?.flyToBounds(polygonRef.current.getBounds(), {
+                  padding: [10, 10],
+                  animate: true,
+                  duration: 1.2,
+                });
+              } else {
+                mapInstance?.flyTo([13.635, 123.25], 13, {
+                  animate: true,
+                  duration: 1.2,
+                });
+              }
+            }}
             className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text rounded-[4px] cursor-pointer transition-colors"
           >
             <svg
