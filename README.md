@@ -10,28 +10,56 @@
 ```
 maki-sig@flood-prediction-test
 ────────────────────────────────────────────
-Project    flood-prediction-test
-Purpose    Flood probability prediction
-Input      3-day forecasted precipitation
+Project    FLOWS — Flood Level Observation and Warning System
+Location   Naga City, Camarines Sur, Philippines
 Model      XGBoost Classifier
 Frontend   Next.js · TypeScript · Tailwind CSS · Leaflet.js
-Backend    Python
+Backend    FastAPI (Python)
+Database   Supabase
 Weather    Open-Meteo API
-Structure  frontend / backend / model / data
 License    MIT
 ```
 
 ---
 
-# Flood Prediction Prototype
+# FLOWS — Flood Level Observation and Warning System
 
-A full-stack web application that predicts flood probabilities using 3-day forecasted precipitation data, powered by an XGBoost classifier. Currently localized for Naga City, Camarines Sur, Philippines.
+A full-stack ML-powered flood intelligence dashboard providing **3-day hourly flood probability forecasts** for Naga City, Philippines. Built with an XGBoost classifier, a FastAPI backend, and a responsive Next.js dashboard with light/dark themes.
 
 ---
 
-## Overview
+## Dashboard Features
 
-This project fetches 3-day precipitation forecasts from the Open-Meteo API for a user-selected location, then runs the data through a trained XGBoost classifier to produce flood probability estimates. Locations are picked interactively via a Leaflet.js map, and results are surfaced through a Next.js frontend with a Python backend handling inference.
+- **3-Day Forecast View** — Switch between Today, Tomorrow, and Day After Tomorrow with per-day risk summaries
+- **Interactive Chart** — Dual-axis overlay of rain intensity and flood probability across 24 hourly ticks with hover inspection
+- **Timeline Node Inspector** — Hourly breakdown of rainfall features and the raw XGBoost probability output
+- **Interactive Map** — Naga City boundary overlay color-coded by current risk level, with multiple map tile styles
+- **Logs Table** — Scrollable hourly data table with per-row risk classification badges
+- **Live Indicators** — Philippine Standard Time (PST) clock and next sync countdown
+- **Dark / Light Theme** — WCAG-compliant semantic color system
+
+### Risk Levels
+
+| Level                       | Probability |
+|-----------------------------|-------------|
+| No Chance of Flooding       | < 1%        |
+| Low Chance of Flooding      | 1% – 10%    |
+| Moderate Chance of Flooding | 10% – 35%   |
+| High Chance of Flooding     | > 35%       |
+
+---
+
+## Tech Stack
+
+| Layer        | Technology                                          |
+|--------------|-----------------------------------------------------|
+| Frontend     | Next.js, TypeScript, Tailwind CSS                   |
+| Map          | Leaflet.js                                          |
+| Backend      | FastAPI, Python 3.9+                                |
+| ML Model     | XGBoost Classifier                                  |
+| Database     | Supabase                                            |
+| Weather API  | Open-Meteo                                          |
+| Deployment   | Vercel (frontend) · Render (backend) · cron-job.org |
 
 ---
 
@@ -39,24 +67,11 @@ This project fetches 3-day precipitation forecasts from the Open-Meteo API for a
 
 ```
 flood-prediction-test/
-├── frontend/       # Next.js + Tailwind CSS web UI
-├── backend/        # Python API server
-├── model/          # XGBoost model training & serialization
-└── data/           # Datasets used for training and evaluation
+├── frontend/   # Next.js dashboard
+├── backend/    # FastAPI inference server
+├── model/      # XGBoost model artifact
+└── data/       # Training & evaluation datasets
 ```
-
----
-
-## Tech Stack
-
-| Layer        | Technology                               |
-|--------------|------------------------------------------|
-| Frontend     | Next.js, TypeScript, Tailwind CSS        |
-| Maps         | Leaflet.js                               |
-| Weather Data | Open-Meteo API                           |
-| Backend      | Python                                   |
-| ML Model     | XGBoost Classifier                       |
-| Input Data   | 3-day forecasted precipitation           |
 
 ---
 
@@ -66,24 +81,18 @@ flood-prediction-test/
 
 - Python 3.9+
 - Node.js 18+
+- Supabase project
+- Environment variables configured (see `.env.example` if provided)
 
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/maki-sig/flood-prediction-test.git
-cd flood-prediction-test
-```
-
-### 2. Set up the backend
+### Backend
 
 ```bash
 cd backend
-python main.py
+pip install -r requirements.txt
+uvicorn app:app --reload
 ```
 
-The API server will start at `http://localhost:8000` (or as configured).
-
-### 3. Set up the frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -91,28 +100,18 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`.
+The dashboard will be available at `http://localhost:3000`.
 
 ---
 
 ## Model
 
-The ML model lives in the `model/` directory. It is an **XGBoost Classifier** trained on historical precipitation and flood occurrence data.
-
-To retrain the model:
+The XGBoost classifier is trained on historical precipitation data. To retrain:
 
 ```bash
-cd model
+cd backend
 python train.py
 ```
-
-The trained model artifact is saved and loaded automatically by the backend at inference time.
-
----
-
-## Data
-
-The `data/` directory contains the datasets used for training and evaluation. Input features are derived from **3-day forecasted precipitation** values.
 
 ---
 
