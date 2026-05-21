@@ -64,7 +64,6 @@ async def update_predictions(
     force: bool = False
 ):
     import requests
-    from supabase import create_client, Client
     
     supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
     supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
@@ -102,43 +101,64 @@ async def update_predictions(
     # 2. Temporal Cooldown (45-Minute Rate Limiting)
     if not force:
         try:
-            temp_client = create_client(supabase_url, supabase_key)
-            last_record = temp_client.table("rainfall_prediction_logs") \
-                .select("created_at") \
-                .order("created_at", desc=True) \
-                .limit(1) \
-                .execute()
-                
-            if last_record.data:
-                created_at_str = last_record.data[0]["created_at"]
-                if created_at_str.endswith("Z"):
-                    created_at_str = created_at_str.replace("Z", "+00:00")
-                
-                last_update_time = datetime.fromisoformat(created_at_str)
-                now_utc = datetime.now(timezone.utc)
-                time_diff = now_utc - last_update_time
-                
-                if time_diff < timedelta(minutes=45):
-                    minutes_ago = int(time_diff.total_seconds() / 60)
-                    return {
-                        "status": "skipped",
-                        "message": f"Database updated {minutes_ago} minutes ago. Cooldown active (45m)."
-                    }
+            # Query Supabase via direct Postgrest REST request to bypass supabase package compiler dependencies
+            headers = {
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}"
+            }
+            params = {
+                "select": "created_at",
+                "order": "created_at.desc",
+                "limit": 1
+            }
+            res = requests.get(f"{supabase_url}/rest/v1/rainfall_prediction_logs", headers=headers, params=params)
+            
+            if res.status_code == 200:
+                last_record_data = res.json()
+                if last_record_data:
+                    created_at_str = last_record_data[0]["created_at"]
+                    if created_at_str.endswith("Z"):
+                        created_at_str = created_at_str.replace("Z", "+00:00")
+                    
+                    last_update_time = datetime.fromisoformat(created_at_str)
+                    now_utc = datetime.now(timezone.utc)
+                    time_diff = now_utc - last_update_time
+                    
+                    if time_diff < timedelta(minutes=45):
+                        minutes_ago = int(time_diff.total_seconds() / 60)
+                        return {
+                            "status": "skipped",
+                            "message": f"Database updated {minutes_ago} minutes ago. Cooldown active (45m)."
+                        }
         except Exception as db_err:
             print(f"Error checking cooldown status: {db_err}")
 
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded on server")
 
+    # Parse optional JSON payload from request body if POST
+    body_data = None
+    if request.method == "POST":
+        try:
+            body_data = await request.json()
+        except Exception:
+            pass
+
     try:
-        # 1. Fetch from Open-Meteo
-        open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=GMT&past_days=1&forecast_days=3"
-        weather_response = requests.get(open_meteo_url)
-        if weather_response.status_code != 200:
-            raise HTTPException(status_code=500, detail=f"Open-Meteo API returned status {weather_response.status_code}")
+        # 1. Fetch from Open-Meteo (or use provided payload)
+        hourly = None
+        if body_data and isinstance(body_data, dict) and "hourly" in body_data:
+            print("[Update] Using injected weather payload from request body.")
+            hourly = body_data.get("hourly", {})
+        else:
+            print("[Update] Injected payload not found or invalid. Fetching from Open-Meteo API...")
+            open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=GMT&past_days=1&forecast_days=3"
+            weather_response = requests.get(open_meteo_url)
+            if weather_response.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"Open-Meteo API returned status {weather_response.status_code}")
+            weather_data = weather_response.json()
+            hourly = weather_data.get("hourly", {})
             
-        weather_data = weather_response.json()
-        hourly = weather_data.get("hourly", {})
         times = hourly.get("time", [])
         precipitation = hourly.get("precipitation", [])
         
@@ -171,9 +191,20 @@ async def update_predictions(
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
             
-        # 5. Initialize Supabase and Upsert
-        supabase_client: Client = create_client(supabase_url, supabase_key)
-        res = supabase_client.table("rainfall_prediction_logs").upsert(records, on_conflict="forecast_time").execute()
+        # 5. Initialize Supabase and Upsert (via direct REST API)
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates"
+        }
+        res = requests.post(
+            f"{supabase_url}/rest/v1/rainfall_prediction_logs?on_conflict=forecast_time",
+            headers=headers,
+            json=records
+        )
+        if res.status_code not in (200, 201):
+            raise Exception(f"Supabase REST upsert failed with status {res.status_code}: {res.text}")
         
         return {
             "status": "success",
