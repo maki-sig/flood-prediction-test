@@ -699,7 +699,7 @@ export default function Home() {
 
             {/* Hour Inspector Card (Left, 7 cols) */}
             <div className="lg:col-span-7 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-primary-blue-bg to-transparent pointer-events-none rounded-none blur-2xl" />
+
 
               <div className="flex justify-between items-center border-b border-border-surface pb-2 mb-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
