@@ -93,17 +93,36 @@ async function syncWithBackend(latitude: string, longitude: string, force: boole
   const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
   const updateSecret = process.env.UPDATE_SECRET;
 
-  const headers: HeadersInit = {};
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
   if (updateSecret) {
     headers["Authorization"] = `Bearer ${updateSecret}`;
+  }
+
+  // 1. Fetch weather payload using Vercel IP (resilient proxying)
+  let weatherData = null;
+  try {
+    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=precipitation&timezone=GMT&past_days=1&forecast_days=3`;
+    console.log(`[Vercel Fetch] Querying Open-Meteo directly: ${openMeteoUrl}`);
+    const weatherRes = await fetch(openMeteoUrl);
+    if (weatherRes.ok) {
+      weatherData = await weatherRes.json();
+    } else {
+      console.warn(`[Vercel Fetch] Direct Open-Meteo query failed with status ${weatherRes.status}. Falling back to backend direct fetching.`);
+    }
+  } catch (err: any) {
+    console.error("[Vercel Fetch] Failed fetching from Open-Meteo:", err.message);
   }
 
   const queryParams = new URLSearchParams({ latitude, longitude });
   if (force) queryParams.append("force", "true");
 
+  // 2. POST weather payload to Python backend /update
   const response = await fetch(`${backendApiUrl}/update?${queryParams.toString()}`, {
     method: "POST",
-    headers
+    headers,
+    body: weatherData ? JSON.stringify(weatherData) : undefined
   });
 
   if (!response.ok) {
