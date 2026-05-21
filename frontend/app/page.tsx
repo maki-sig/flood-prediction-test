@@ -278,7 +278,7 @@ export default function Home() {
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root">
 
       {/* Main content wrapper */}
-      
+
       {/* Header Navigation (Catppuccin Mantle) */}
       <header className="relative w-full border-b border-border-surface bg-bg-mantle/95 md:bg-bg-mantle/90 md:backdrop-blur-md z-30 px-3 md:px-6 py-2.5 md:py-4 flex flex-row items-center justify-between gap-2 flows-header">
         <div className="flex items-center gap-2 md:gap-3">
@@ -437,7 +437,7 @@ export default function Home() {
                   </div>
 
                   <p className="text-[11px] font-light leading-relaxed text-text-subtext bg-bg-crust/20 border border-border-surface p-2.5 rounded-[4px] flows-indicator">
-                    {activeData.summary.risk_level === "Safe" && "Conditions are currently clear. Telemetry predicts minimal rainfall with no threat of flooding. Have a safe day!"}
+                    {activeData.summary.risk_level === "Safe" && "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"}
                     {activeData.summary.risk_level === "Low" && "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."}
                     {activeData.summary.risk_level === "Moderate" && "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."}
                     {activeData.summary.risk_level === "High" && "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."}
