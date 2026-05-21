@@ -40,10 +40,10 @@ export default function FloodMap({
     }
   }, [theme]);
 
-  // Explicit global bounds clamped to Bicol/Naga City region to prevent infinite panning
-  const nagaBounds: L.LatLngBoundsExpression = [
-    [13.4, 122.9], // SouthWest corner
-    [13.8, 123.4], // NorthEast corner
+  // Explicit global bounds clamped to the world to prevent infinite panning
+  const worldBounds: L.LatLngBoundsExpression = [
+    [-90, -180], // SouthWest corner
+    [90, 180], // NorthEast corner
   ];
 
   // Initialize Map
@@ -56,9 +56,9 @@ export default function FloodMap({
       attributionControl: false,
       fadeAnimation: false,
       scrollWheelZoom: false,
-      minZoom: 11,
+      minZoom: 2,
       maxZoom: 18,
-      maxBounds: nagaBounds,
+      maxBounds: worldBounds,
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
     }).setView([13.635, 123.25], 13);
@@ -99,12 +99,8 @@ export default function FloodMap({
     polygonRef.current = polygon;
     setMapInstance(map);
 
-    // Automatically fit polygon on mobile, or keep zoomed-in default view on desktop
-    if (window.innerWidth < 768) {
-      map.fitBounds(polygon.getBounds(), { padding: [10, 10] });
-    } else {
-      map.setView([13.635, 123.25], 13);
-    }
+    // Automatically fit polygon
+    map.fitBounds(polygon.getBounds(), { padding: [10, 10] });
 
     return () => {
       map.remove();
@@ -147,7 +143,7 @@ export default function FloodMap({
         attribution: attrib,
         subdomains: "abcd",
         noWrap: true,
-        bounds: nagaBounds,
+        bounds: worldBounds,
       }).addTo(mapInstance);
 
       tileLayerRef.current = newLayer;
@@ -201,15 +197,9 @@ export default function FloodMap({
           <button
             title="Reset Map Position"
             onClick={() => {
-              const isMobile = window.innerWidth < 768;
-              if (isMobile && polygonRef.current) {
+              if (polygonRef.current) {
                 mapInstance?.flyToBounds(polygonRef.current.getBounds(), {
                   padding: [10, 10],
-                  animate: true,
-                  duration: 1.2,
-                });
-              } else {
-                mapInstance?.flyTo([13.635, 123.25], 13, {
                   animate: true,
                   duration: 1.2,
                 });
