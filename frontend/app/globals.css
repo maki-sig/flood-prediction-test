@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 :root,
 :root[data-theme="dark"] {
@@ -99,6 +102,7 @@
   --color-semantic-red-border: var(--semantic-red-border);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
 }
 
 body {
