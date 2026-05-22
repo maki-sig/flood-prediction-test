@@ -298,10 +298,10 @@ export default function Home() {
       <header className="relative w-full border-b border-border-surface bg-bg-mantle/95 backdrop-blur-md z-30 px-4 md:px-6 py-3 flex flex-row items-center justify-between gap-2 flows-header">
         <div className="flex items-center gap-2 md:gap-3">
           <a href="/" className="group block cursor-pointer transition-all">
-            <h1 className="text-sm font-extrabold tracking-wider uppercase bg-gradient-to-r from-text-text to-text-subtext group-hover:from-primary-blue group-hover:to-primary-blue transition-colors text-transparent bg-clip-text">
+            <h1 className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
               FLOWS
             </h1>
-            <p className="text-[8px] text-text-subtext group-hover:text-primary-blue/80 font-mono tracking-wider uppercase transition-colors">ML-Driven Flood Prediction Module</p>
+            <p className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">ML-Driven Flood Prediction Module</p>
           </a>
         </div>
 
