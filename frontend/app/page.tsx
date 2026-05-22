@@ -1,104 +1,235 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, Suspense } from "react";
-import dynamic from "next/dynamic";
+import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
-const FloodMap = dynamic(() => import("./components/FloodMap"), {
-  ssr: false,
-});
+const FEATURES = [
+  {
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.5 2.121m-1.5-2.121c.251.023.501.05.75.082M5 14.5l-1.5 1.5m0 0A2.25 2.25 0 001.5 18v.75M5 14.5l4.5-4.5M19 14.5l1.5 1.5m0 0A2.25 2.25 0 0122.5 18v.75m-3-3.75l-4.5-4.5" />
+      </svg>
+    ),
+    label: "XGBoost Classifier",
+    desc: "Gradient-boosted ensemble of 100 decision trees running binary:logistic inference on rolling rainfall telemetry.",
+  },
+  {
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
+      </svg>
+    ),
+    label: "Open-Meteo Integration",
+    desc: "Hourly rainfall forecasts fetched live from Open-Meteo APIs — 1h intensity, 6h and 24h rolling accumulation.",
+  },
+  {
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />
+      </svg>
+    ),
+    label: "Cartographic Risk Map",
+    desc: "Leaflet-powered interactive map of Naga City with color-coded flood risk overlays updating per selected hour.",
+  },
+  {
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+      </svg>
+    ),
+    label: "3-Day Telemetry Timeline",
+    desc: "Dual-axis SVG charts display rain intensity and flood probability curves per hour across a 72-hour window.",
+  },
+  {
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    label: "Real-Time PST Clock",
+    desc: "Live Philippine Standard Time display with automatic hourly re-sync countdown tied to Open-Meteo refresh cycles.",
+  },
+  {
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 8.25h3m-3 3.75h3m-6-7.5H9m1.5 3.75H9m1.5 3.75H9" />
+      </svg>
+    ),
+    label: "Hourly Log Table",
+    desc: "Full 24-hour tabular breakdown of rainfall metrics, accumulations, and classified risk levels per hour.",
+  },
+];
 
-interface HourlyData {
-  time: string;
-  hour: number;
-  rain_intensity_1h: number;
-  rain_accum_6h: number;
-  rain_accum_24h: number;
-  probability: number;
-}
+const RISK_LEVELS = [
+  { label: "Safe", range: "< 1%", color: "#10b981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.35)" },
+  { label: "Low", range: "1 – 10%", color: "#3b82f6", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.35)" },
+  { label: "Moderate", range: "10 – 35%", color: "#facc15", bg: "rgba(250,204,21,0.12)", border: "rgba(250,204,21,0.35)" },
+  { label: "High", range: "> 35%", color: "#f87171", bg: "rgba(248,113,113,0.12)", border: "rgba(248,113,113,0.35)" },
+];
 
-interface DailyPredictionBlock {
-  date: string;
-  summary: {
-    risk_level: string;
-    peak_probability: number;
-    peak_hour: number;
-    average_probability: number;
-    total_precipitation: number;
-  };
-  hourly: HourlyData[];
-}
+const STACK = [
+  {
+    name: "Next.js",
+    role: "App Framework",
+    logo: (
+      <svg viewBox="0 0 180 180" className="w-6 h-6 text-text-text" fill="currentColor">
+        <path d="M86.5 3.2C47.3 6.6 15 37.6 9.8 76.7c-6.5 48.7 29 93 78 96.2 13.5.9 26.3-1.5 38.3-7.1l-47.2-70.6v52.3c0 2.3-1.8 4.1-4.1 4.1H68c-2.3 0-4.1-1.8-4.1-4.1V70.9c0-2.3 1.8-4.1 4.1-4.1h8.7c1.9 0 3.5 1.3 4 3l52.1 77.9c12.8-11 21.9-25.8 25.8-42.7 8.5-37.1-12.4-75.5-48.3-90.2A86.8 86.8 0 0086.5 3.2zm30.6 116-11.3-16.9V70.9c0-2.3 1.8-4.1 4.1-4.1h6.8c2.3 0 4.1 1.8 4.1 4.1v47.2c0 .7-.2 1.4-.6 2l-3.1-.1z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "React",
+    role: "UI Runtime",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#149ECA] dark:text-[#61DAFB]" fill="currentColor">
+        <path d="M14.23 12.004a2.236 2.236 0 0 1-2.235 2.236 2.236 2.236 0 0 1-2.236-2.236 2.236 2.236 0 0 1 2.235-2.236 2.236 2.236 0 0 1 2.236 2.236zm2.648-10.69c-1.346 0-3.107.96-4.888 2.622-1.78-1.653-3.542-2.602-4.887-2.602-.41 0-.783.093-1.106.278-1.375.793-1.683 3.264-.973 6.365C1.98 8.917 0 10.42 0 12.004c0 1.59 1.99 3.097 5.043 4.03-.704 3.113-.39 5.588.988 6.38.32.187.69.275 1.102.275 1.345 0 3.107-.96 4.888-2.624 1.78 1.654 3.542 2.603 4.887 2.603.41 0 .783-.09 1.106-.275 1.374-.792 1.683-3.263.973-6.365C22.02 15.096 24 13.59 24 12.004c0-1.59-1.99-3.097-5.043-4.032.704-3.11.39-5.587-.988-6.38-.318-.184-.688-.277-1.092-.278zm-.005 1.09v.006c.225 0 .406.044.558.127.666.382.955 1.835.73 3.704-.054.46-.142.945-.25 1.44-.96-.236-2.006-.417-3.107-.534-.66-.905-1.345-1.727-2.035-2.447 1.592-1.48 3.087-2.292 4.105-2.295zm-9.77.02c1.012 0 2.514.808 4.11 2.28-.686.72-1.37 1.537-2.02 2.442-1.107.117-2.154.298-3.113.538-.112-.49-.195-.964-.254-1.42-.23-1.868.054-3.32.714-3.707.19-.09.4-.127.563-.132zm4.882 3.05c.455.468.91.992 1.36 1.564-.44-.02-.89-.034-1.345-.034-.46 0-.915.01-1.36.034.44-.572.895-1.096 1.345-1.565zM12 8.1c.74 0 1.477.034 2.202.093.406.582.802 1.203 1.183 1.86.372.64.71 1.29 1.018 1.946-.308.655-.646 1.31-1.013 1.95-.38.66-.773 1.288-1.18 1.87-.728.063-1.466.098-2.21.098-.74 0-1.477-.035-2.202-.093-.406-.582-.802-1.204-1.183-1.86-.372-.64-.71-1.29-1.018-1.946.303-.657.646-1.313 1.013-1.954.38-.66.773-1.286 1.18-1.868.728-.064 1.466-.098 2.21-.098zm-3.635.254c-.24.377-.48.763-.704 1.16-.225.39-.435.782-.635 1.174-.265-.656-.49-1.31-.676-1.947.64-.15 1.315-.283 2.015-.386zm7.26 0c.695.103 1.365.23 2.006.387-.18.632-.405 1.282-.66 1.933-.2-.39-.41-.783-.64-1.174-.225-.392-.465-.774-.705-1.146zm3.063.675c.484.15.944.317 1.375.498 1.732.74 2.852 1.708 2.852 2.476-.005.768-1.125 1.74-2.857 2.475-.42.18-.88.342-1.355.493-.28-.958-.646-1.956-1.1-2.98.45-1.017.81-2.01 1.085-2.964zm-13.395.004c.278.96.645 1.957 1.1 2.98-.45 1.017-.812 2.01-1.086 2.964-.484-.15-.944-.318-1.37-.5-1.732-.737-2.852-1.706-2.852-2.474 0-.768 1.12-1.742 2.852-2.476.42-.18.88-.342 1.356-.494zm11.678 4.28c.265.657.49 1.312.676 1.948-.64.157-1.316.29-2.016.39.24-.375.48-.762.705-1.158.225-.39.435-.788.636-1.18zm-9.945.02c.2.392.41.783.64 1.175.23.39.465.772.705 1.143-.695-.102-1.365-.23-2.006-.386.18-.63.406-1.282.66-1.933zM17.92 16.32c.112.493.2.968.254 1.423.23 1.868-.054 3.32-.714 3.708-.147.09-.338.128-.563.128-1.012 0-2.514-.807-4.11-2.28.686-.72 1.37-1.536 2.02-2.44 1.107-.118 2.154-.3 3.113-.54zm-11.83.01c.96.234 2.006.415 3.107.532.66.905 1.345 1.727 2.035 2.446-1.595 1.483-3.092 2.295-4.11 2.295-.22-.005-.406-.05-.553-.132-.666-.38-.955-1.834-.73-3.703.054-.46.142-.944.25-1.438zm4.56.64c.44.02.89.034 1.345.034.46 0 .915-.01 1.36-.034-.44.572-.895 1.095-1.345 1.565-.455-.47-.91-.993-1.36-1.565z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Tailwind CSS",
+    role: "Design System",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#0ea5e9] dark:text-[#38bdf8]" fill="currentColor">
+        <path d="M12.001 4.8c-3.2 0-5.2 1.6-6 4.8 1.2-1.6 2.6-2.2 4.2-1.8.913.228 1.565.89 2.288 1.624C13.666 10.618 15.027 12 18.001 12c3.2 0 5.2-1.6 6-4.8-1.2 1.6-2.6 2.2-4.2 1.8-.913-.228-1.565-.89-2.288-1.624C16.337 6.182 14.976 4.8 12.001 4.8zm-6 7.2c-3.2 0-5.2 1.6-6 4.8 1.2-1.6 2.6-2.2 4.2-1.8.913.228 1.565.89 2.288 1.624 1.177 1.194 2.538 2.576 5.512 2.576 3.2 0 5.2-1.6 6-4.8-1.2 1.6-2.6 2.2-4.2 1.8-.913-.228-1.565-.89-2.288-1.624C10.337 13.382 8.976 12 6.001 12z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Leaflet.js",
+    role: "Cartography Engine",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#199900] dark:text-[#22c55e]" fill="currentColor">
+        <path d="M17.69 0c-.355.574-8.432 4.74-10.856 8.649-2.424 3.91-3.116 6.988-2.237 9.882.879 2.893 2.559 2.763 3.516 3.717.958.954 2.257 2.113 4.332 1.645 2.717-.613 5.335-2.426 6.638-7.508 1.302-5.082.448-9.533-.103-11.99A35.395 35.395 0 0 0 17.69 0zm-.138.858l-9.22 21.585-.574-.577Z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Flask",
+    role: "Prediction API",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-text-text" fill="currentColor">
+        <path d="M10.773 2.878c-.013 1.434.322 4.624.445 5.734l-8.558 3.83c-.56-.959-.98-2.304-1.237-3.38l-.06.027c-.205.09-.406.053-.494-.088l-.011-.018-.82-1.506c-.058-.105-.05-.252.024-.392a.78.78 0 0 1 .358-.331l9.824-4.207c.146-.064.299-.063.4.004.106.062.127.128.13.327Zm.68 7c.523 1.97.675 2.412.832 2.818l-7.263 3.7a19.35 19.35 0 0 1-1.81-2.83l8.24-3.689Zm12.432 8.786h.003c.283.402-.047.657-.153.698l-.947.37c.037.125.035.319-.217.414l-.736.287c-.229.09-.398-.059-.42-.2l-.025-.125c-4.427 1.784-7.94 1.685-10.696.647-1.981-.745-3.576-1.983-4.846-3.379l6.948-3.54c.721 1.431 1.586 2.454 2.509 3.178 2.086 1.638 4.415 1.712 5.793 1.563l-.047-.233c-.015-.077.007-.135.086-.165l.734-.288a.302.302 0 0 1 .342.086l.748-.288a.306.306 0 0 1 .341.086l.583.89Z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Python",
+    role: "Backend Language",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#3776AB] dark:text-[#4B8BBE]" fill="currentColor">
+        <path d="M11.914 0C5.82 0 6.2 2.656 6.2 2.656l.007 2.752h5.814v.826H3.9S0 5.789 0 11.969c0 6.18 3.403 5.963 3.403 5.963h2.032v-2.867s-.109-3.403 3.35-3.403h5.769s3.24.052 3.24-3.13V3.13S18.28 0 11.914 0zm-3.21 1.81a1.047 1.047 0 011.045 1.046 1.047 1.047 0 01-1.046 1.045 1.047 1.047 0 01-1.045-1.046A1.047 1.047 0 018.703 1.81zM12.086 24c6.096 0 5.716-2.656 5.716-2.656l-.007-2.752h-5.814v-.826h8.12S24 18.211 24 12.031c0-6.18-3.403-5.963-3.403-5.963h-2.032v2.867s.109 3.403-3.35 3.403H9.446s-3.24-.052-3.24 3.13v5.402S5.72 24 12.086 24zm3.21-1.81a1.047 1.047 0 01-1.045-1.046 1.047 1.047 0 011.046-1.045 1.047 1.047 0 011.045 1.046A1.047 1.047 0 0115.297 22.19z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "XGBoost",
+    role: "ML Classifier",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#1396F1] dark:text-[#38bdf8]" fill="none" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.5 2.121m-1.5-2.121c.251.023.501.05.75.082M5 14.5l-1.5 1.5m0 0A2.25 2.25 0 001.5 18v.75M5 14.5l4.5-4.5M19 14.5l1.5 1.5m0 0A2.25 2.25 0 0122.5 18v.75m-3-3.75l-4.5-4.5" />
+      </svg>
+    ),
+  },
+  {
+    name: "Open-Meteo",
+    role: "Weather API",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#0ea5e9] dark:text-[#38bdf8]" fill="currentColor">
+        <path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.8 1.41-1.41-1.8-1.79-1.4 1.4zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V19.5h-2v2.95zm-7.45-3.91l1.41 1.41 1.79-1.8-1.41-1.41-1.79 1.8z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Supabase",
+    role: "Database Layer",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#10b981] dark:text-[#3ECF8E]" fill="currentColor">
+        <path d="M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C.303 12.586.71 13.4 1.407 13.4h8.02l.165 9.564c.015.986 1.26 1.41 1.874.637l9.262-11.652c.46-.536.054-1.35-.644-1.35h-8.02L11.9 1.036z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Vercel",
+    role: "Frontend Deploy",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-text-text" fill="currentColor">
+        <path d="M24 22.525H0l12-21.05 12 21.05z"/>
+      </svg>
+    ),
+  },
+  {
+    name: "Render",
+    role: "API Deploy",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-text-text" fill="currentColor">
+        <path d="M18.263.007c-3.121-.147-5.744 2.109-6.192 5.082-.018.138-.045.272-.067.405-.696 3.703-3.936 6.507-7.827 6.507-1.388 0-2.691-.356-3.825-.979a.2024.2024 0 0 0-.302.178V24H12v-8.999c0-1.656 1.338-3 2.987-3h2.988c3.382 0 6.103-2.817 5.97-6.244-.12-3.084-2.61-5.603-5.682-5.75"/>
+      </svg>
+    ),
+  },
+];
 
-interface PredictionResponse {
-  location: {
-    latitude: number;
-    longitude: number;
-    elevation: number;
-    timezone: string;
-    timezone_abbreviation: string;
-  };
-  days: {
-    today: DailyPredictionBlock;
-    tomorrow: DailyPredictionBlock;
-    dayAfterTomorrow: DailyPredictionBlock;
-  };
-}
-
-const NAGA_LAT = "13.6192";
-const NAGA_LON = "123.1814";
-
-// Probability categorization helper with premium theme semantics
-const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
-  const pct = p * 100;
-  if (pct < 1.0) {
-    return {
-      label: "No Chance of Flooding",
-      colorClass: "text-safe-text border-safe-border bg-safe-bg",
-      textColor: "text-safe-text",
-      hex: theme === "dark" ? "#a7f3d0" : "#059669"
-    };
-  } else if (pct < 10.0) {
-    return {
-      label: "Low Chance of Flooding",
-      colorClass: "text-primary-blue border-primary-blue-border bg-primary-blue-bg",
-      textColor: "text-primary-blue",
-      hex: theme === "dark" ? "#bae6fd" : "#0284c7"
-    };
-  } else if (pct < 35.0) {
-    return {
-      label: "Moderate Chance of Flooding",
-      colorClass: "text-semantic-yellow border-semantic-yellow-border bg-semantic-yellow-bg",
-      textColor: "text-semantic-yellow",
-      hex: theme === "dark" ? "#fde68a" : "#d97706"
-    };
-  } else {
-    return {
-      label: "High Chance of Flooding",
-      colorClass: "text-semantic-red border-semantic-red-border bg-semantic-red-bg",
-      textColor: "text-semantic-red",
-      hex: theme === "dark" ? "#fecdd3" : "#e11d48"
-    };
-  }
-};
-
-export default function Home() {
-  const [loading, setLoading] = useState(false);
-
-  const [data, setData] = useState<PredictionResponse | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+export default function LandingPage() {
+  const [phTime, setPhTime] = useState("");
+  const [scrolled, setScrolled] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [activeSection, setActiveSection] = useState<string>('hero');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const NAV_LINKS = [
+    { id: 'about',      label: 'About'    },
+    { id: 'features',   label: 'Features' },
+    { id: 'risk-model', label: 'Risk Model'},
+    { id: 'stack',      label: 'Stack'    },
+  ];
+
+  const isProgrammaticScroll = useRef(false);
+  const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // Set active immediately — don't wait for scroll detector
+    setActiveSection(id);
+    // Suppress scroll detector during smooth scroll animation
+    isProgrammaticScroll.current = true;
+    if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current);
+    programmaticScrollTimer.current = setTimeout(() => {
+      isProgrammaticScroll.current = false;
+    }, 900);
+    const nav = document.querySelector('nav');
+    const navHeight = nav ? nav.getBoundingClientRect().height : 64;
+    const top = el.getBoundingClientRect().top + window.scrollY - navHeight - 16;
+    window.scrollTo({ top, behavior: 'smooth' });
+  };
+
+  const hasThemeMounted = useRef(false);
 
   // Load saved theme on mount
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme") as "dark" | "light";
     if (savedTheme) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(savedTheme);
     }
   }, []);
 
   // Manage theme state and inject data attribute
   useEffect(() => {
+    // Skip writing to localStorage on initial render/mount to avoid overwriting stored settings
+    if (!hasThemeMounted.current) {
+      hasThemeMounted.current = true;
+      // Apply whatever the default or initial DOM state should be
+      const initialOrCurrentTheme = localStorage.getItem("theme") as "dark" | "light" || theme;
+      document.documentElement.setAttribute("data-theme", initialOrCurrentTheme);
+      if (initialOrCurrentTheme === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+      return;
+    }
+
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
     if (theme === "dark") {
@@ -108,754 +239,485 @@ export default function Home() {
     }
   }, [theme]);
 
-  // Handle scroll visibility for "Scroll to Top" button
   useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 300) {
-        setShowScrollTop(true);
-      } else {
-        setShowScrollTop(false);
-      }
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Derive active forecast period data block
-  const activeData = useMemo(() => {
-    if (!data) return null;
-    return data.days[selectedPeriod];
-  }, [data, selectedPeriod]);
-
-  // Interactive selected hour index
-  const [selectedHourIdx, setSelectedHourIdx] = useState<number>(12);
-
-  // Live timer for next forecast sync
-  const [timeUntilNextHour, setTimeUntilNextHour] = useState<string>("59:59");
-
-  // Live clock for Philippine Standard Time (PST)
-  const [phTime, setPhTime] = useState<string>("");
-
-  // Fetch prediction function
-  const fetchPrediction = useCallback(async () => {
-    setLoading(true);
-    try {
-      const url = `/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Server returned error ${res.status}`);
-      }
-      const json: PredictionResponse = await res.json();
-      if ("error" in json) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        throw new Error((json as any).error);
-      }
-      setData(json);
-      // Default selected hour is the peak risk hour
-      setSelectedHourIdx(json.days[selectedPeriod].summary.peak_hour);
-    } catch {
-      // Fail silently as error is not used in UI
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedPeriod]);
-
-  // Initial fetch
-  useEffect(() => {
-    // Defer network fetch to prevent client hydration from locking the main thread on mobile WebKit
-    const timer = setTimeout(() => {
-      fetchPrediction();
-    }, 150);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Live countdown timer to the next hour turn (standard open-meteo hourly refresh schedule)
-  useEffect(() => {
-    const calculateCountdown = () => {
-      const now = new Date();
-      const nextHour = new Date();
-      nextHour.setHours(now.getHours() + 1, 0, 0, 0);
-
-      const diffMs = nextHour.getTime() - now.getTime();
-
-      const minutes = Math.floor(diffMs / 60000);
-      const seconds = Math.floor((diffMs % 60000) / 1000);
-
-      const formatNum = (n: number) => n.toString().padStart(2, "0");
-      setTimeUntilNextHour(`${formatNum(minutes)}:${formatNum(seconds)}`);
-
-      // Trigger a auto-fetch if countdown reaches exact 00:00
-      if (minutes === 0 && seconds === 0) {
-        setTimeout(() => fetchPrediction(), 1000);
-      }
-    };
-
-    calculateCountdown();
-    const interval = setInterval(calculateCountdown, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Live clock for Philippine Standard Time (PST)
-  useEffect(() => {
-    const updateTime = () => {
+    const update = () => {
       try {
-        const formatter = new Intl.DateTimeFormat("en-US", {
-          timeZone: "Asia/Manila",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: true,
-        });
-        setPhTime(formatter.format(new Date()));
-      } catch (e) {
-        console.error("Failed to format time:", e);
-      }
+        setPhTime(
+          new Intl.DateTimeFormat("en-US", {
+            timeZone: "Asia/Manila",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true,
+          }).format(new Date())
+        );
+      } catch {}
     };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const onScroll = () => {
+      setScrolled(window.scrollY > 40);
+      setShowScrollTop(window.scrollY > 300);
+    };
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
-
-  // Selected hour details
-  const selectedHourDetails = useMemo(() => {
-    if (!activeData || !activeData.hourly || activeData.hourly.length === 0) return null;
-    return activeData.hourly.find((h) => h.hour === selectedHourIdx) || activeData.hourly[12];
-  }, [activeData, selectedHourIdx]);
-
-  // Selected hour category
-  const selectedHourCategory = useMemo(() => {
-    if (!selectedHourDetails) return null;
-    return getProbabilityCategory(selectedHourDetails.probability, theme);
-  }, [selectedHourDetails, theme]);
-
-  // SVG Chart Dimensions and Math
-  const chartHeight = 220;
-  const chartWidth = 720;
-  const paddingLeft = 45;
-  const paddingRight = 45;
-  const paddingTop = 20;
-  const paddingBottom = 30;
-
-  // Max precipitation value for Y-axis scaling
-  const maxPrecip = useMemo(() => {
-    if (!activeData || !activeData.hourly) return 1.0;
-    return Math.max(...activeData.hourly.map(h => h.rain_intensity_1h), 1.0);
-  }, [activeData]);
-
-  const chartPoints = useMemo(() => {
-    if (!activeData || !activeData.hourly) return null;
-    const hourly = activeData.hourly;
-
-    const xStride = (chartWidth - paddingLeft - paddingRight) / 23;
-
-    return hourly.map((h, i) => {
-      const x = paddingLeft + i * xStride;
-      // Precip (left axis)
-      const yPrecip = chartHeight - paddingBottom - (h.rain_intensity_1h / maxPrecip) * (chartHeight - paddingTop - paddingBottom);
-      // Probability (right axis)
-      const yProb = chartHeight - paddingBottom - (h.probability / 1.0) * (chartHeight - paddingTop - paddingBottom);
-
-      return { x, yPrecip, yProb, ...h };
-    });
-  }, [activeData, maxPrecip]);
-
-  // Formatting utilities
-  const formatHour = (h: number) => {
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hour = h % 12 === 0 ? 12 : h % 12;
-    return `${hour}:00 ${ampm}`;
-  };
-
-  // Overall Risk Category
-  const summaryCategory = useMemo(() => {
-    if (!activeData) return null;
-    return getProbabilityCategory(activeData.summary.peak_probability / 100, theme);
-  }, [activeData, theme]);
+  // Scroll-position based active section detection (reliable for all section heights)
+  useEffect(() => {
+    const sectionIds = ['hero', 'about', 'features', 'risk-model', 'stack', 'cta'];
+    const detect = () => {
+      // Don't override active section during programmatic smooth scroll
+      if (isProgrammaticScroll.current) return;
+      const nav = document.querySelector('nav');
+      const navHeight = nav ? nav.getBoundingClientRect().height : 64;
+      const detectionY = navHeight + 32;
+      let current = sectionIds[0];
+      for (const id of sectionIds) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= detectionY) {
+          current = id;
+        }
+      }
+      setActiveSection(current);
+    };
+    window.addEventListener('scroll', detect, { passive: true });
+    detect();
+    return () => window.removeEventListener('scroll', detect);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root">
-
-      {/* Main content wrapper */}
-
-      {/* Header Navigation (Catppuccin Mantle) */}
-      <header className="relative w-full border-b border-border-surface bg-bg-mantle/95 md:bg-bg-mantle/90 md:backdrop-blur-md z-30 px-3 md:px-6 py-2.5 md:py-4 flex flex-row items-center justify-between gap-2 flows-header">
-        <div className="flex items-center gap-2 md:gap-3">
-          <div>
-            <h1 className="text-[11px] md:text-base font-extrabold tracking-wider uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
-              FLOWS
-            </h1>
-            <p className="text-[7px] md:text-[9px] text-text-subtext font-mono tracking-wider uppercase">ML-Driven Flood Prediction Module</p>
-          </div>
+    <div
+      className="min-h-screen flows-root font-sans antialiased overflow-x-hidden"
+      style={{ background: "var(--bg-base)", color: "var(--text-text)" }}
+    >
+      {/* ── NAV ── */}
+      <nav
+        style={{
+          background: scrolled ? "rgba(var(--bg-mantle-rgb), 0.92)" : "transparent",
+          backdropFilter: scrolled ? "blur(12px)" : "none",
+          borderBottom: scrolled ? "1px solid var(--border-surface)" : "1px solid transparent",
+          transition: "all 0.35s ease",
+        }}
+        className="fixed top-0 left-0 right-0 z-50 px-4 md:px-10 py-3 md:py-4 flex items-center justify-between gap-4"
+      >
+        {/* Brand */}
+        <div className="flex flex-col leading-none shrink-0">
+          <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
+            FLOWS
+          </span>
+          <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
+            Flood Level Observation &amp; Warning System
+          </span>
         </div>
 
-        {/* Live System Indicators & Theme Toggle */}
-        <div className="flex items-center gap-1.5 md:gap-4 font-mono text-[8px] md:text-[10px] text-text-subtext">
-          {/* NEXT UPDATE — hidden on smallest screens to save space */}
-          <div className="hidden sm:flex items-center justify-center gap-1.5 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
-            <span className="text-text-subtext font-bold text-[7px] md:text-[10px]">NEXT UPDATE IN:</span>
-            <span className="text-text-text font-bold text-[7px] md:text-[10px]">{timeUntilNextHour}</span>
-          </div>
+        {/* Center nav links — desktop only */}
+        <div className="hidden md:flex items-center gap-1">
+          {NAV_LINKS.map((link) => (
+            <button
+              key={link.id}
+              onClick={() => scrollToSection(link.id)}
+              className={`relative px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider rounded-[4px] transition-all duration-200 cursor-pointer ${
+                activeSection === link.id
+                  ? 'text-primary-blue'
+                  : 'text-text-muted hover:text-text-subtext'
+              }`}
+            >
+              {link.label}
+              {activeSection === link.id && (
+                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-primary-blue" />
+              )}
+            </button>
+          ))}
+        </div>
 
-          <div className="flex items-center justify-center gap-1 md:gap-2 h-5 md:h-7 px-2 md:px-3 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
+        {/* Right controls */}
+        <div className="flex items-center gap-2">
+          {/* PST — sm+ only */}
+          <div className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-[4px] border border-border-surface bg-bg-crust/50 text-text-subtext font-mono text-[9px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://flagsapi.com/PH/flat/64.png"
-              alt="Philippines Flag"
-              className="w-3 h-3 md:w-3.5 md:h-3.5 object-contain select-none"
-            />
-            <span className="text-text-subtext font-bold uppercase tracking-wider text-[7px] md:text-[10px]">PST:</span>
-            <span className="text-text-text font-bold tracking-wider text-[7px] md:text-[10px]">{phTime || "12:00:00 AM"}</span>
+            <img src="https://flagsapi.com/PH/flat/64.png" alt="PH" className="w-3 h-3 object-contain" />
+            <span className="text-text-muted">PST:</span>
+            <span className="text-text-text">{phTime || "00:00:00 AM"}</span>
           </div>
 
+          {/* Theme toggle */}
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-            className="flex items-center justify-center w-5 h-5 md:w-7 md:h-7 bg-bg-crust/50 border border-border-surface text-text-muted hover:text-primary-blue rounded-[4px] cursor-pointer transition-colors flows-indicator"
+            className="w-7 h-7 flex items-center justify-center border border-border-surface bg-bg-crust/50 text-text-muted hover:text-primary-blue hover:border-primary-blue/40 rounded-[4px] cursor-pointer transition-colors duration-200"
           >
             {theme === 'dark' ? (
-              /* Sun Icon for Light Mode */
-              <svg className="w-[10px] h-[10px] md:w-[13px] md:h-[13px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
               </svg>
             ) : (
-              /* Moon Icon for Dark Mode */
-              <svg className="w-[10px] h-[10px] md:w-[13px] md:h-[13px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
               </svg>
             )}
           </button>
-        </div>
-      </header>
 
-      {/* Main Workspace Layout */}
-      <div className="flex flex-col w-full z-10">
+          {/* Launch Dashboard — desktop */}
+          <Link
+            href="/dashboard"
+            className="hidden sm:flex items-center h-7 px-3 rounded-[4px] text-[9px] font-bold font-mono uppercase tracking-wider transition-all hover:opacity-90 active:scale-95"
+            style={{ background: "var(--primary-blue)", color: "#fff" }}
+            id="nav-launch-dashboard"
+          >
+            Launch Dashboard →
+          </Link>
 
-        {/* SECTION 1: Docked Split Viewport Map (Right) & Left Sidebar Analytics (Left) */}
-        <section className="relative w-full h-auto md:h-[calc(100vh-66px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
-
-          {/* DOCKED SIDEBAR PANEL (Left, height fills map) */}
-          <aside className="w-full md:w-[420px] shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans shadow-lg z-20 flows-sidebar">
-            <div className="flex flex-col gap-4">
-              <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
-                  </svg>
-                  Analytics Console
-                </h2>
-                <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
-              </div>
-
-              {activeData && summaryCategory ? (
-                <div className="flex flex-col gap-4">
-
-                  {/* Timeframe selector tabs with Date display */}
-                  <div className="flex flex-col gap-1.5 order-last md:order-none border-t md:border-t-0 pt-4 md:pt-0 md:border-b border-border-surface md:pb-3 mt-2 md:mt-0">
-                    <span className="text-[8px] font-bold font-mono tracking-widest uppercase text-[#89b4fa]">
-                      EVALUATION TIMEFRAME
-                    </span>
-                    <div className="grid grid-cols-3 gap-1 bg-bg-crust border border-border-surface p-1 rounded-[4px]">
-                      {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
-                        const dateVal = data?.days[period]?.date || "";
-                        const formattedDate = dateVal
-                          ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                          : "";
-                        return (
-                          <button
-                            key={period}
-                            onClick={() => setSelectedPeriod(period)}
-                            className={`py-1 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
-                              ? "bg-primary-blue text-white"
-                              : "text-text-subtext hover:bg-border-surface/50 hover:text-text-text"
-                              }`}
-                          >
-                            <span className="leading-none">{period === "dayAfterTomorrow" ? "3RD DAY" : period}</span>
-                            <span className={`text-[7px] leading-none mt-0.5 font-light ${selectedPeriod === period ? "text-white/80" : "text-text-muted"}`}>
-                              {formattedDate}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Categorized Risk Summary */}
-                  <div className="flex flex-col gap-1">
-                    <div className="flex justify-between items-center mt-1">
-                      <span className="text-sm font-light text-text-subtext">Overall Assessment</span>
-                      <span className={`flex items-center justify-center px-2.5 py-0.5 rounded-[4px] text-[10px] font-mono font-black uppercase tracking-wider border ${summaryCategory.colorClass}`}>
-                        {summaryCategory.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Core Risk Metrics Grid */}
-                  <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border-surface font-mono">
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Peak Risk</span>
-                      <span className={`text-xl md:text-2xl font-extrabold ${summaryCategory?.textColor || 'text-text-text'} mt-1`}>
-                        {activeData.summary.peak_probability}%
-                      </span>
-                      <span className="text-[9px] text-text-muted mt-1">
-                        Peak at {formatHour(activeData.summary.peak_hour)}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Rainfall</span>
-                      <span className="text-xl md:text-2xl font-extrabold text-text-text mt-1">
-                        {activeData.summary.total_precipitation}<span className="text-[10px] text-text-subtext font-light ml-0.5">mm</span>
-                      </span>
-                      <span className="text-[9px] text-text-muted mt-1">24h Forecast</span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">Mean Index</span>
-                      <span className="text-xl md:text-2xl font-extrabold text-text-subtext mt-1">
-                        {activeData.summary.average_probability}%
-                      </span>
-                      <span className="text-[9px] text-text-muted mt-1">Mean Prob</span>
-                    </div>
-                  </div>
-
-                  {/* Local environment specs */}
-                  <div className="border border-border-surface bg-bg-crust/40 rounded-[4px] p-3 text-xs font-light text-text-subtext flex flex-col gap-2 flows-subbox">
-                    <div className="flex justify-between font-mono text-[9px] text-text-muted uppercase tracking-wider border-b border-border-surface pb-1.5">
-                      <span>Telemetry Node</span>
-                      <span>Status Details</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-text-subtext font-medium">Elevation:</span>
-                      <span className="font-mono text-text-text font-semibold">{data?.location.elevation}m asl</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-text-subtext font-medium">Refresh Interval:</span>
-                      <span className="font-mono text-text-text font-semibold">Hourly Sync</span>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] font-light leading-relaxed text-text-subtext bg-bg-crust/20 border border-border-surface p-2.5 rounded-[4px] flows-indicator">
-                    {activeData.summary.risk_level === "Safe" && "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"}
-                    {activeData.summary.risk_level === "Low" && "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."}
-                    {activeData.summary.risk_level === "Moderate" && "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."}
-                    {activeData.summary.risk_level === "High" && "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."}
-                  </p>
-                </div>
-              ) : (
-                <div className="py-20 flex flex-col items-center justify-center gap-3">
-                  {loading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                      <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
-                      <button
-                        onClick={() => fetchPrediction()}
-                        className="px-3 py-1.5 bg-[#11111b] border border-[#313244] hover:bg-[#313244] text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
-                      >
-                        Connect Sensor
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Scroll-down indicators inside the floating sidebar */}
-            <div className="mt-4 pt-2.5 border-t border-border-surface flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
-              <span>Scroll down for timelines</span>
-              <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 13l-7 7-7-7m14-6l-7 7-7-7" />
+          {/* Hamburger — mobile only */}
+          <button
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            className="w-7 h-7 flex md:hidden items-center justify-center border border-border-surface bg-bg-crust/50 text-text-muted rounded-[4px] cursor-pointer transition-colors"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
-            </div>
-          </aside>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </nav>
 
-          {/* DOCKED MAP PANEL (Right, fills map height) */}
-          <div className="flex-1 h-[400px] md:h-full relative z-10 bg-[#11111b]">
-            <Suspense fallback={
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
-                <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
-              </div>
-            }>
-              <FloodMap
-                data={data}
-                theme={theme}
-                selectedHourDetails={selectedHourDetails}
-                getProbabilityCategory={getProbabilityCategory}
-              />
-            </Suspense>
+      {/* Mobile menu drawer */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed top-0 left-0 right-0 bottom-0 z-40 flex flex-col pt-16"
+          style={{ background: "rgba(var(--bg-mantle-rgb), 0.98)", backdropFilter: "blur(16px)" }}
+        >
+          <nav className="flex flex-col gap-1 px-6 pt-6 pb-8">
+            {NAV_LINKS.map((link) => (
+              <button
+                key={link.id}
+                onClick={() => { scrollToSection(link.id); setMobileMenuOpen(false); }}
+                className={`flex items-center justify-between py-4 border-b font-mono text-sm uppercase tracking-wider transition-colors cursor-pointer ${
+                  activeSection === link.id
+                    ? 'text-primary-blue border-primary-blue/20'
+                    : 'text-text-subtext border-border-surface hover:text-text-text'
+                }`}
+              >
+                {link.label}
+                <svg className="w-4 h-4 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+          </nav>
+          <div className="px-6 mt-auto pb-10">
+            <Link
+              href="/dashboard"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center justify-center w-full py-3.5 rounded-[4px] text-sm font-bold font-mono uppercase tracking-wider transition-all active:scale-95"
+              style={{ background: "var(--primary-blue)", color: "#fff" }}
+            >
+              Open Dashboard →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── HERO ── */}
+      <section
+        className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-24 pb-20 text-center overflow-hidden"
+        id="hero"
+      >
+        {/* Ambient glow orbs */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-0">
+          <div style={{
+            position: "absolute", top: "15%", left: "50%", transform: "translateX(-50%)",
+            width: 600, height: 600, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%)",
+          }} />
+          <div style={{
+            position: "absolute", bottom: "10%", right: "10%",
+            width: 300, height: 300, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(16,185,129,0.08) 0%, transparent 70%)",
+          }} />
+        </div>
+
+        <div className="relative z-10 flex flex-col items-center gap-6 max-w-3xl mx-auto">
+          {/* Badge */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border font-mono text-[9px] uppercase tracking-widest"
+            style={{ borderColor: "var(--primary-blue-border)", background: "var(--primary-blue-bg)", color: "var(--primary-blue)" }}>
+            ML-Powered · Naga City, Philippines · Live Hourly
           </div>
 
-        </section>
+          {/* Wordmark */}
+          <h1 className="text-5xl sm:text-6xl md:text-8xl font-extrabold tracking-tight leading-none bg-gradient-to-br from-text-text via-text-subtext to-primary-blue text-transparent bg-clip-text">
+            FLOWS
+          </h1>
 
-        {/* SECTION 2: Dynamic Chart Area (Displayed below the map through scrolling down) */}
-        {activeData && chartPoints && (
-          <section className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-10 flex flex-col gap-6 z-10 border-b border-border-surface/40">
+          <p className="text-base md:text-lg font-light leading-relaxed max-w-xl"
+            style={{ color: "var(--text-subtext)" }}>
+            A machine-learning flood prediction dashboard for Naga City — combining real-time Open-Meteo weather data with an XGBoost classifier to deliver hourly flood probability assessments.
+          </p>
 
-            <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col gap-4 flows-card">
-              <div className="flex justify-between items-center flex-wrap gap-4 border-b border-border-surface pb-3">
-                <div>
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                    <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
-                    </svg>
-                    Telemetry Timeline & Forecast Curve
-                  </h2>
-                  <p className="text-[10px] font-light text-text-muted mt-0.5">
-                    Hover across coordinates to evaluate index factors at targeted timelines
-                  </p>
-                </div>
+          {/* CTA Buttons — stacked on mobile, row on sm+ */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-2 w-full">
+            <Link
+              href="/dashboard"
+              id="hero-cta-dashboard"
+              className="w-full sm:w-auto px-6 py-3 rounded-[4px] text-sm font-bold uppercase tracking-wider transition-all hover:opacity-90 active:scale-95 text-center"
+              style={{ background: "var(--primary-blue)", color: "#fff", boxShadow: "0 0 24px rgba(59,130,246,0.35)" }}
+            >
+              Open Dashboard →
+            </Link>
+            <a
+              href="https://github.com/maki-sig/flood-prediction-test"
+              target="_blank"
+              rel="noopener noreferrer"
+              id="hero-cta-github"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 rounded-[4px] text-sm font-bold uppercase tracking-wider border transition-all hover:opacity-80 active:scale-95"
+              style={{ borderColor: "var(--border-surface)", color: "var(--text-subtext)", background: "rgba(var(--bg-crust-rgb),0.4)" }}
+            >
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.083-.729.083-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23A11.51 11.51 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.29-1.552 3.297-1.23 3.297-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.298 24 12c0-6.63-5.37-12-12-12z" />
+              </svg>
+              View on GitHub
+            </a>
+          </div>
 
-                {/* Chart Legend (Catppuccin colored markers) */}
-                <div className="flex gap-4 font-mono text-[9px] text-text-subtext uppercase tracking-wider">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-none bg-primary-blue inline-block" />
-                    Rain Intensity (mm/h)
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-none bg-[#f38ba8] inline-block" />
-                    Flood Probability (%)
-                  </span>
-                </div>
-              </div>
-
-              {/* Interactive SVG Chart */}
-              <div className="relative w-full overflow-x-auto select-none pt-2">
-                <svg
-                  viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                  className="w-full min-w-[700px] h-auto overflow-visible"
-                >
-                  {/* Gridlines */}
-                  {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
-                    const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
-                    return (
-                      <g key={ratio} className="opacity-30 flows-gridline">
-                        <line
-                          x1={paddingLeft}
-                          y1={y}
-                          x2={chartWidth - paddingRight}
-                          y2={y}
-                          stroke="var(--border-surface)"
-                          strokeWidth={0.5}
-                          strokeDasharray="2 2"
-                        />
-                      </g>
-                    );
-                  })}
-
-                  {/* Left Y-Axis Labels (Rain Intensity mm/h) */}
-                  {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
-                    const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
-                    const value = (1.0 - ratio) * maxPrecip;
-                    return (
-                      <text
-                        key={`y-left-${ratio}`}
-                        x={paddingLeft - 8}
-                        y={y + 3}
-                        className="text-[7.5px] font-mono fill-primary-blue flows-chart-text-left"
-                        textAnchor="end"
-                      >
-                        {value.toFixed(1)}
-                      </text>
-                    );
-                  })}
-
-                  {/* Right Y-Axis Labels (Flood Probability %) */}
-                  {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
-                    const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
-                    const value = Math.round((1.0 - ratio) * 100);
-                    return (
-                      <text
-                        key={`y-right-${ratio}`}
-                        x={chartWidth - paddingRight + 8}
-                        y={y + 3}
-                        className="text-[7.5px] font-mono fill-[#f38ba8] flows-chart-text-right"
-                        textAnchor="start"
-                      >
-                        {value}%
-                      </text>
-                    );
-                  })}
-
-                  {/* X Axis labels (Hours) rendered complete with compact font size to fit all hours */}
-                  {chartPoints.map((pt) => {
-                    return (
-                      <text
-                        key={pt.hour}
-                        x={pt.x}
-                        y={chartHeight - 8}
-                        className="text-[6.2px] font-mono font-light tracking-tighter fill-text-subtext flows-chart-text"
-                        textAnchor="middle"
-                      >
-                        {pt.hour === 0 ? "12 AM" : pt.hour === 12 ? "12 PM" : `${pt.hour % 12}${pt.hour >= 12 ? " PM" : " AM"}`}
-                      </text>
-                    );
-                  })}
-
-                  {/* Rain Intensity (Sky Blue Area) */}
-                  <path
-                    d={`
-                      M ${chartPoints[0].x} ${chartHeight - paddingBottom}
-                      ${chartPoints.map(pt => `L ${pt.x} ${pt.yPrecip}`).join(" ")}
-                      L ${chartPoints[chartPoints.length - 1].x} ${chartHeight - paddingBottom}
-                      Z
-                    `}
-                    fill="url(#cyan-gradient)"
-                    className="opacity-[0.08]"
-                  />
-                  <path
-                    d={chartPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.yPrecip}`).join(" ")}
-                    fill="none"
-                    stroke={theme === 'dark' ? "#3b82f6" : "#2563eb"}
-                    strokeWidth={1.5}
-                    strokeLinecap="square"
-                  />
-
-                  {/* Flood Probability (Red/Rose Area) */}
-                  <path
-                    d={`
-                      M ${chartPoints[0].x} ${chartHeight - paddingBottom}
-                      ${chartPoints.map(pt => `L ${pt.x} ${pt.yProb}`).join(" ")}
-                      L ${chartPoints[chartPoints.length - 1].x} ${chartHeight - paddingBottom}
-                      Z
-                    `}
-                    fill="url(#rose-gradient)"
-                    className="opacity-[0.06]"
-                  />
-                  <path
-                    d={chartPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.yProb}`).join(" ")}
-                    fill="none"
-                    stroke="#f38ba8"
-                    strokeWidth={1.5}
-                    strokeLinecap="square"
-                  />
-
-                  {/* Interactivity columns overlay */}
-                  {chartPoints.map((pt) => {
-                    const xStride = (chartWidth - paddingLeft - paddingRight) / 23;
-                    const xStart = pt.x - xStride / 2;
-                    return (
-                      <rect
-                        key={pt.hour}
-                        x={xStart}
-                        y={paddingTop}
-                        width={xStride}
-                        height={chartHeight - paddingTop - paddingBottom}
-                        fill="transparent"
-                        className="cursor-pointer hover:fill-primary-blue-bg"
-                        onMouseEnter={() => setSelectedHourIdx(pt.hour)}
-                        onClick={() => setSelectedHourIdx(pt.hour)}
-                      />
-                    );
-                  })}
-
-                  {/* Cursor indicators */}
-                  {(() => {
-                    const activePt = chartPoints.find(pt => pt.hour === selectedHourIdx);
-                    if (!activePt) return null;
-                    return (
-                      <g className="pointer-events-none">
-                        <line
-                          x1={activePt.x}
-                          y1={paddingTop}
-                          x2={activePt.x}
-                          y2={chartHeight - paddingBottom}
-                          stroke="#585b70"
-                          strokeWidth={1}
-                          strokeDasharray="2 2"
-                        />
-                        <rect x={activePt.x - 3.5} y={activePt.yPrecip - 3.5} width={7} height={7} fill={theme === 'dark' ? "#3b82f6" : "#2563eb"} stroke="#ffffff" strokeWidth={1} />
-                        <rect x={activePt.x - 3.5} y={activePt.yProb - 3.5} width={7} height={7} fill="#f38ba8" stroke="#ffffff" strokeWidth={1} />
-                      </g>
-                    );
-                  })()}
-
-                  {/* Gradients using Catppuccin parameters */}
-                  <defs>
-                    <linearGradient id="cyan-gradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={theme === 'dark' ? "#3b82f6" : "#2563eb"} />
-                      <stop offset="100%" stopColor={theme === 'dark' ? "#3b82f6" : "#2563eb"} stopOpacity="0" />
-                    </linearGradient>
-                    <linearGradient id="rose-gradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#f38ba8" />
-                      <stop offset="100%" stopColor="#f38ba8" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-            </div>
-
-          </section>
-        )}
-
-        {/* SECTION 3: Node Inspectors & XGBoost Specifications */}
-        {activeData && selectedHourDetails && selectedHourCategory && (
-          <section className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 border-b border-border-surface/40">
-
-            {/* Hour Inspector Card (Left, 7 cols) */}
-            <div className="lg:col-span-7 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl relative overflow-hidden">
-
-
-              <div className="flex justify-between items-center border-b border-border-surface pb-2 mb-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                  Timeline Node Inspector: {formatHour(selectedHourDetails.hour)}
-                </h3>
-                <span className={`font-mono text-[9px] border text-center px-2 py-0.5 rounded-[2px] uppercase ${selectedHourCategory.colorClass}`}>
-                  {selectedHourCategory.label}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs mb-3">
-
-                {/* rain_intensity_1h */}
-                <div className="flex flex-col bg-bg-crust/40 rounded-[4px] p-3 border border-border-surface gap-1.5">
-                  <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">rain_intensity_1h</span>
-                  <span className="text-sm md:text-base font-bold text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
-                  <span className="text-[9.5px] font-sans font-light text-text-subtext leading-normal">Precipitation current hour</span>
-                </div>
-
-                {/* rain_accum_6h */}
-                <div className="flex flex-col bg-bg-crust/40 rounded-[4px] p-3 border border-border-surface gap-1.5 flows-subbox">
-                  <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">rain_accum_6h</span>
-                  <span className="text-sm md:text-base font-bold text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
-                  <span className="text-[9.5px] font-sans font-light text-text-subtext leading-normal">Rolling 6h accumulation</span>
-                </div>
-
-                {/* rain_accum_24h */}
-                <div className="flex flex-col bg-bg-crust/40 rounded-[4px] p-3 border border-border-surface gap-1.5 flows-subbox">
-                  <span className="text-[9px] font-bold text-text-muted uppercase tracking-widest">rain_accum_24h</span>
-                  <span className="text-sm md:text-base font-bold text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[10px] text-text-subtext font-normal">mm</span></span>
-                  <span className="text-[9.5px] font-sans font-light text-text-subtext leading-normal">Rolling 24h accumulation</span>
-                </div>
-
-              </div>
-
-              {/* Categorized Model Prediction Output */}
-              <div className="flex justify-between items-center bg-bg-crust/60 rounded-[4px] p-3.5 border border-border-surface shadow-md flows-subbox">
-                <div>
-                  <p className="text-[9px] font-mono font-bold text-text-muted uppercase tracking-widest">Target Prediction Prob</p>
-                  <p className="text-[10px] font-sans font-light text-text-subtext mt-0.5">XGBoost prediction index</p>
-                </div>
-                <div className="text-right flex flex-col items-end">
-                  <span className="text-base md:text-lg font-mono font-bold text-text-text">{(selectedHourDetails.probability * 100).toFixed(4)}%</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Model Card (Right, 5 cols) */}
-            <div className="lg:col-span-5 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-3 flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                  XGBoost Classifier Architecture
-                </h3>
-
-                <p className="text-xs font-light text-text-subtext leading-relaxed mb-4">
-                  Predictive logs execute in local virtual environments. Feature lag calculations sum the past 6h and 24h intervals back into today&apos;s timeline to ensure seamless continuity.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-center font-mono text-[9px] uppercase">
-                <div className="bg-bg-crust/40 border border-border-surface rounded-[4px] p-2.5 flows-subbox">
-                  <p className="text-text-muted font-bold">Objective</p>
-                  <p className="text-text-text mt-0.5">binary:logistic</p>
-                </div>
-                <div className="bg-bg-crust/40 border border-border-surface rounded-[4px] p-2.5 flows-subbox">
-                  <p className="text-text-muted font-bold">Architecture</p>
-                  <p className="text-text-text mt-0.5">100 Trees (Depth 4)</p>
-                </div>
-              </div>
-            </div>
-
-          </section>
-        )}
-
-        {/* SECTION 4: Tabular Timelines and Logs */}
-        {activeData && (
-          <section className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-6 pb-16 z-10">
-
-            <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 shadow-xl flex flex-col justify-between flows-card">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-4 flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Evaluated Logs Timeline & Classifications
-                </h3>
-
-                <div className="max-h-[350px] overflow-y-auto overflow-x-auto pr-1 border border-border-surface bg-bg-crust/20 rounded-[4px] flows-subbox">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border-surface text-text-muted font-mono text-[9px] uppercase tracking-wider bg-bg-mantle sticky top-0 z-10 flows-header">
-                        <th className="py-2.5 px-3">Hour</th>
-                        <th className="py-2.5 px-3">Rain (1h)</th>
-                        <th className="py-2.5 px-3">Accum (6h)</th>
-                        <th className="py-2.5 px-3">Accum (24h)</th>
-                        <th className="py-2.5 px-3 text-center">Probability</th>
-                        <th className="py-2.5 px-3 text-center md:text-right">Risk Classification</th>
-                      </tr>
-                    </thead>
-                    <tbody className="font-mono text-[11px]">
-                      {activeData.hourly.map((h) => {
-                        const hrCat = getProbabilityCategory(h.probability, theme);
-                        return (
-                          <tr
-                            key={h.hour}
-                            id={`hour-row-${h.hour}`}
-                            onMouseEnter={() => setSelectedHourIdx(h.hour)}
-                            className={`border-b border-border-surface/40 transition-colors cursor-pointer flows-tablerow ${selectedHourIdx === h.hour
-                              ? "bg-border-surface/40 text-text-text"
-                              : "hover:bg-border-surface/15 text-text-subtext"
-                              }`}
-                          >
-                            <td className="py-2.5 px-3 font-semibold">{formatHour(h.hour)}</td>
-                            <td className="py-2.5 px-3">{h.rain_intensity_1h.toFixed(1)} mm</td>
-                            <td className="py-2.5 px-3 text-text-muted">{h.rain_accum_6h.toFixed(1)} mm</td>
-                            <td className="py-2.5 px-3 text-text-muted">{h.rain_accum_24h.toFixed(1)} mm</td>
-                            <td className="py-2.5 px-3 text-center font-bold text-text-text">
-                              {(h.probability * 100).toFixed(3)}%
-                            </td>
-                            <td className="py-2.5 px-3 text-center md:text-right">
-                              <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[10px] font-bold border ${hrCat.colorClass}`}>
-                                {hrCat.label}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="mt-3 font-mono text-[9px] text-text-muted uppercase tracking-wider">
-                *Select timelines to evaluate rolling sensors in depth
-              </div>
-            </div>
-
-          </section>
-        )}
-
-      </div>
-
-      {/* Footer (Catppuccin Crust) */}
-      <footer className="w-full border-t border-border-surface bg-bg-crust mt-auto py-5 px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 text-[10px] font-mono text-text-muted uppercase tracking-widest z-20">
-        <div className="flex flex-col gap-1">
-          <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
-          <span>Made with ❤️ by Botis, M. (<a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">@maki-sig</a>)</span>
+          {/* Scroll hint */}
+          <div className="mt-12 flex flex-col items-center gap-1.5 animate-bounce"
+            style={{ color: "var(--text-muted)" }}>
+            <span className="text-[9px] font-mono uppercase tracking-widest">Explore</span>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
         </div>
-        <span>APIs powered by <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">OPEN-METEO</a> and <a href="https://render.com/" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">RENDER</a></span>
+      </section>
+
+      {/* ── WHAT IS FLOWS ── */}
+      <section className="relative px-4 md:px-10 py-16 md:py-24 max-w-5xl mx-auto" id="about">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
+          <div className="flex flex-col gap-5">
+            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--primary-blue)" }}>
+              About the System
+            </span>
+            <h2 className="text-2xl md:text-3xl font-extrabold leading-snug" style={{ color: "var(--text-text)" }}>
+              Flood risk intelligence, delivered hourly.
+            </h2>
+            <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
+              FLOWS (Flood Level Observation and Warning System) is an end-to-end predictive analytics platform built for Naga City, Camarines Sur. It ingests live atmospheric telemetry from Open-Meteo, runs an XGBoost gradient-boosted classifier, and surfaces actionable flood probability indices across a 72-hour forecast window.
+            </p>
+            <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
+              The system was engineered as a capstone project to bridge academic ML research with real-world disaster preparedness tooling, covering the full pipeline from raw weather API ingestion to an interactive production dashboard.
+            </p>
+            <div className="flex flex-col gap-2 p-4 rounded-[4px] border font-mono text-[10px] uppercase tracking-wider"
+              style={{ borderColor: "var(--semantic-yellow-border)", background: "var(--semantic-yellow-bg)", color: "var(--semantic-yellow)" }}>
+              <div className="flex items-center gap-2 font-bold">
+                SYSTEM STATUS: ACTIVE BETA
+              </div>
+              <p className="text-[11px] font-sans font-light tracking-normal normal-case text-text-subtext">
+                FLOWS is currently in its beta phase. Future integrations will include Barangay-level flood forecasting models, enhancing predictive resolution down to individual neighborhood sectors.
+              </p>
+            </div>
+          </div>
+
+          {/* Stats — 2-col on all sizes */}
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { value: "72h", label: "Forecast Window" },
+              { value: "100", label: "XGBoost Trees" },
+              { value: "3", label: "Input Features" },
+              { value: "4", label: "Risk Tiers" },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className="flex flex-col gap-1 p-4 rounded-[4px] border flows-card"
+                style={{ borderColor: "var(--border-surface)", background: "rgba(var(--bg-mantle-rgb),0.5)" }}
+              >
+                <span className="text-2xl md:text-3xl font-extrabold font-mono" style={{ color: "var(--primary-blue)" }}>{s.value}</span>
+                <span className="text-[10px] font-mono uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FEATURES ── */}
+      <section className="relative px-4 md:px-10 py-16 md:py-24 max-w-5xl mx-auto" id="features">
+        <div className="flex flex-col items-center gap-2 mb-12 text-center">
+          <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--primary-blue)" }}>
+            Core Capabilities
+          </span>
+          <h2 className="text-2xl md:text-3xl font-extrabold" style={{ color: "var(--text-text)" }}>
+            What powers FLOWS
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {FEATURES.map((f) => (
+            <div
+              key={f.label}
+              className="flex flex-col gap-3 p-5 rounded-[4px] border transition-colors flows-card group"
+              style={{ borderColor: "var(--border-surface)", background: "rgba(var(--bg-mantle-rgb),0.4)" }}
+            >
+              <div className="w-9 h-9 rounded-[4px] flex items-center justify-center shrink-0"
+                style={{ background: "var(--primary-blue-bg)", color: "var(--primary-blue)", border: "1px solid var(--primary-blue-border)" }}>
+                {f.icon}
+              </div>
+              <span className="text-[11px] font-bold font-mono uppercase tracking-wider" style={{ color: "var(--text-text)" }}>{f.label}</span>
+              <p className="text-xs font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── RISK CLASSIFICATION ── */}
+      <section className="relative px-4 md:px-10 py-16 md:py-24 max-w-5xl mx-auto" id="risk-model">
+        <div className="flex flex-col md:flex-row gap-10 md:gap-16 items-start">
+          <div className="flex flex-col gap-4 md:w-72 shrink-0">
+            <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--primary-blue)" }}>
+              Risk Model
+            </span>
+            <h2 className="text-2xl md:text-3xl font-extrabold leading-snug" style={{ color: "var(--text-text)" }}>
+              Four-tier probability classification
+            </h2>
+            <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
+              Every hourly output is bucketed into one of four risk tiers based on the XGBoost probability score. Color-coded badges and map overlays reflect the active tier in real time.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 flex-1 w-full">
+            {RISK_LEVELS.map((r) => (
+              <div
+                key={r.label}
+                className="flex items-center justify-between gap-4 px-4 py-4 rounded-[4px] border"
+                style={{ borderColor: r.border, background: r.bg }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-2.5 h-2.5 rounded-[2px] shrink-0" style={{ background: r.color }} />
+                  <span className="font-mono font-bold text-sm" style={{ color: r.color }}>{r.label}</span>
+                </div>
+                <span className="font-mono text-[11px]" style={{ color: "var(--text-subtext)" }}>Flood Probability {r.range}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── TECH STACK ── */}
+      <section className="relative py-16 md:py-24 overflow-hidden" id="stack">
+        {/* Header */}
+        <div className="flex flex-col items-center gap-2 mb-12 text-center px-4">
+          <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--primary-blue)" }}>
+            Technology Stack
+          </span>
+          <h2 className="text-2xl md:text-3xl font-extrabold" style={{ color: "var(--text-text)" }}>
+            Built end-to-end
+          </h2>
+          <p className="text-sm font-light" style={{ color: "var(--text-subtext)" }}>
+            Every layer of the pipeline, from data ingestion to deployment.
+          </p>
+        </div>
+
+        {/* Marquee container with edge fades */}
+        <div className="relative" id="stack-marquee-wrapper">
+          {/* Left fade */}
+          <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-24 z-10"
+            style={{ background: "linear-gradient(to right, var(--bg-base), transparent)" }} />
+          {/* Right fade */}
+          <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-24 z-10"
+            style={{ background: "linear-gradient(to left, var(--bg-base), transparent)" }} />
+
+          {/* Single marquee track */}
+          <div id="stack-marquee-track" className="flex gap-4 w-max pr-4">
+            {[...STACK, ...STACK, ...STACK, ...STACK].map((s, i) => (
+              <div
+                key={`card-${i}`}
+                className="flex flex-col items-center justify-center gap-3 p-4 w-28 h-28 rounded-[6px] border shrink-0"
+                style={{
+                  borderColor: "var(--border-surface)",
+                  background: "rgba(var(--bg-crust-rgb),0.6)",
+                  backdropFilter: "blur(8px)",
+                }}
+              >
+                <span className="shrink-0 drop-shadow-sm">{s.logo}</span>
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="font-mono font-bold text-[10px] text-text-text text-center leading-tight">{s.name}</span>
+                  <span className="font-mono text-[8px] uppercase tracking-wider text-text-muted text-center">{s.role}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Keyframe + hover-pause styles */}
+        <style>{`
+          @keyframes marquee-fwd {
+            0%   { transform: translateX(0); }
+            100% { transform: translateX(-25%); }
+          }
+          #stack-marquee-track {
+            animation: marquee-fwd 50s linear infinite;
+          }
+          #stack-marquee-wrapper:hover #stack-marquee-track {
+            animation-play-state: paused;
+          }
+        `}</style>
+      </section>
+
+      {/* ── FINAL CTA ── */}
+      <section className="relative px-4 md:px-10 py-20 md:py-32 flex flex-col items-center text-center gap-6" id="cta">
+        <div aria-hidden className="pointer-events-none absolute inset-0 z-0"
+          style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(59,130,246,0.08) 0%, transparent 70%)" }} />
+        <div className="relative z-10 flex flex-col items-center gap-5 max-w-xl">
+          <h2 className="text-3xl md:text-4xl font-extrabold leading-tight" style={{ color: "var(--text-text)" }}>
+            Ready to check flood risk?
+          </h2>
+          <p className="text-sm font-light" style={{ color: "var(--text-subtext)" }}>
+            Open the live dashboard to view real-time ML predictions for Naga City powered by the latest Open-Meteo forecast data.
+          </p>
+          <Link
+            href="/dashboard"
+            id="cta-open-dashboard"
+            className="px-8 py-3.5 rounded-[4px] text-sm font-bold uppercase tracking-wider transition-all hover:opacity-90 active:scale-95"
+            style={{ background: "var(--primary-blue)", color: "#fff", boxShadow: "0 0 32px rgba(59,130,246,0.3)" }}
+          >
+            Open Dashboard →
+          </Link>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer
+        className="w-full border-t px-4 md:px-10 py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 font-mono text-[10px] uppercase tracking-widest"
+        style={{ borderColor: "var(--border-surface)", background: "var(--bg-crust)", color: "var(--text-muted)" }}
+      >
+        <div className="flex flex-col gap-1">
+          <span>© 2026 FLOWS – Flood Level Observation and Warning System.</span>
+          <span>
+            Made with ❤️ by Botis, M. (
+            <a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer"
+              className="hover:underline" style={{ color: "var(--primary-blue)" }}>
+              @maki-sig
+            </a>
+            )
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link href="/dashboard" className="hover:underline" style={{ color: "var(--text-subtext)" }}>Dashboard</Link>
+          <span style={{ color: "var(--border-surface)" }}>·</span>
+          <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer"
+            className="hover:underline" style={{ color: "var(--text-subtext)" }}>
+            Open-Meteo
+          </a>
+        </div>
       </footer>
 
       {/* Scroll to Top Button */}
@@ -875,11 +737,6 @@ export default function Home() {
           </div>
         </div>
       </button>
-
     </div>
   );
 }
-
-
-
-

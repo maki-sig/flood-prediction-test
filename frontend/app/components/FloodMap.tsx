@@ -28,6 +28,7 @@ export default function FloodMap({
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
 
@@ -49,6 +50,9 @@ export default function FloodMap({
   // Initialize Map
   useEffect(() => {
     if (!data) return;
+
+    // Reset ready state for each (re)initialization
+    setMapReady(false);
 
     // Set up Leaflet Map inside #flows-leaflet-map
     const map = L.map("flows-leaflet-map", {
@@ -102,9 +106,16 @@ export default function FloodMap({
     // Automatically fit polygon
     map.fitBounds(polygon.getBounds(), { padding: [10, 10] });
 
+    // Mark map as ready once all visible tiles have loaded
+    map.once("load", () => setMapReady(true));
+    // Fallback: some tile providers don't always fire 'load' — mark ready after a short delay
+    const fallbackTimer = setTimeout(() => setMapReady(true), 2500);
+
     return () => {
+      clearTimeout(fallbackTimer);
       map.remove();
       setMapInstance(null);
+      setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -175,6 +186,72 @@ export default function FloodMap({
   return (
     <>
       <div id="flows-leaflet-map" className="w-full h-full z-10" />
+
+      {/* Map loading overlay — fades out once Leaflet tiles are ready */}
+      <div
+        className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 pointer-events-none"
+        style={{
+          background: "var(--bg-base, #1e1e2e)",
+          opacity: mapReady ? 0 : 1,
+          transition: "opacity 0.5s ease",
+        }}
+      >
+        {/* Animated grid skeleton imitating a map grid */}
+        <div className="relative w-full h-full overflow-hidden">
+          {/* Shimmer grid lines */}
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(59,130,246,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.06) 1px, transparent 1px)",
+              backgroundSize: "48px 48px",
+            }}
+          />
+          {/* Shimmer sweep */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(105deg, transparent 40%, rgba(59,130,246,0.07) 50%, transparent 60%)",
+              backgroundSize: "200% 100%",
+              animation: "map-shimmer 2s linear infinite",
+            }}
+          />
+          {/* Centre content */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            {/* Spinning ring */}
+            <div className="relative w-10 h-10">
+              <div
+                className="absolute inset-0 rounded-full border-2 border-primary-blue/20"
+              />
+              <div
+                className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary-blue animate-spin"
+              />
+            </div>
+            <span
+              className="font-mono text-[10px] uppercase tracking-widest"
+              style={{ color: "var(--primary-blue)" }}
+            >
+              Rendering Cartographic Engine
+            </span>
+            <span
+              className="font-mono text-[9px] uppercase tracking-widest"
+              style={{ color: "var(--text-muted, #585b70)" }}
+            >
+              Loading tile layers&hellip;
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Keyframe for the shimmer sweep */}
+      <style>{`
+        @keyframes map-shimmer {
+          0%   { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
 
       {/* Custom Map Menubar (Bottom Center on Mobile, Top Right on Desktop) */}
       <div className="absolute bottom-4 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[90vw] md:max-w-none">
