@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import Link from "next/link";
+import ThemeToggle from "../components/ThemeToggle";
 import Footer from "../components/Footer";
 
 const FEATURES = [
@@ -63,10 +64,34 @@ const FEATURES = [
 ];
 
 const RISK_LEVELS = [
-  { label: "Safe", range: "< 1%", color: "#10b981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.35)" },
-  { label: "Low", range: "1 – 10%", color: "#3b82f6", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.35)" },
-  { label: "Moderate", range: "10 – 35%", color: "#facc15", bg: "rgba(250,204,21,0.12)", border: "rgba(250,204,21,0.35)" },
-  { label: "High", range: "> 35%", color: "#f87171", bg: "rgba(248,113,113,0.12)", border: "rgba(248,113,113,0.35)" },
+  {
+    label: "Safe",
+    range: "< 1%",
+    color: "var(--safe-text)",
+    bg: "var(--safe-bg)",
+    border: "var(--safe-border)",
+  },
+  {
+    label: "Low",
+    range: "1 – 10%",
+    color: "var(--primary-blue)",
+    bg: "var(--primary-blue-bg)",
+    border: "var(--primary-blue-border)",
+  },
+  {
+    label: "Moderate",
+    range: "10 – 35%",
+    color: "var(--semantic-yellow)",
+    bg: "var(--semantic-yellow-bg)",
+    border: "var(--semantic-yellow-border)",
+  },
+  {
+    label: "High",
+    range: "> 35%",
+    color: "var(--semantic-red)",
+    bg: "var(--semantic-red-bg)",
+    border: "var(--semantic-red-border)",
+  },
 ];
 
 const STACK = [
@@ -74,8 +99,8 @@ const STACK = [
     name: "Next.js",
     role: "App Framework",
     logo: (
-      <svg viewBox="0 0 180 180" className="w-6 h-6 text-text-text" fill="currentColor">
-        <path d="M86.5 3.2C47.3 6.6 15 37.6 9.8 76.7c-6.5 48.7 29 93 78 96.2 13.5.9 26.3-1.5 38.3-7.1l-47.2-70.6v52.3c0 2.3-1.8 4.1-4.1 4.1H68c-2.3 0-4.1-1.8-4.1-4.1V70.9c0-2.3 1.8-4.1 4.1-4.1h8.7c1.9 0 3.5 1.3 4 3l52.1 77.9c12.8-11 21.9-25.8 25.8-42.7 8.5-37.1-12.4-75.5-48.3-90.2A86.8 86.8 0 0086.5 3.2zm30.6 116-11.3-16.9V70.9c0-2.3 1.8-4.1 4.1-4.1h6.8c2.3 0 4.1 1.8 4.1 4.1v47.2c0 .7-.2 1.4-.6 2l-3.1-.1z" />
+      <svg viewBox="0 0 24 24" className="w-6 h-6 text-text-text" fill="currentColor">
+        <path d="M18.665 21.978C16.758 23.255 14.465 24 12 24 5.377 24 0 18.623 0 12S5.377 0 12 0s12 5.377 12 12c0 3.583-1.574 6.801-4.067 9.001L9.219 7.2H7.2v9.596h1.615V9.251l8.011 12.742-.161.985zM15.999 7.2v6.792l1.6 2.227V7.2h-1.6z" />
       </svg>
     ),
   },
@@ -175,7 +200,6 @@ export default function LandingPage() {
   const [phTime, setPhTime] = useState("");
   const [scrolled, setScrolled] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [activeSection, setActiveSection] = useState<string>('hero');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -206,40 +230,7 @@ export default function LandingPage() {
     window.scrollTo({ top, behavior: 'smooth' });
   };
 
-  const hasThemeMounted = useRef(false);
-
-  // Load saved theme on mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") as "dark" | "light";
-    if (savedTheme) {
-      setTheme(savedTheme);
-    }
-  }, []);
-
-  // Manage theme state and inject data attribute
-  useEffect(() => {
-    // Skip writing to localStorage on initial render/mount to avoid overwriting stored settings
-    if (!hasThemeMounted.current) {
-      hasThemeMounted.current = true;
-      // Apply whatever the default or initial DOM state should be
-      const initialOrCurrentTheme = localStorage.getItem("theme") as "dark" | "light" || theme;
-      document.documentElement.setAttribute("data-theme", initialOrCurrentTheme);
-      if (initialOrCurrentTheme === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-      return;
-    }
-
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [theme]);
+  
 
   useEffect(() => {
     const update = () => {
@@ -309,14 +300,17 @@ export default function LandingPage() {
         className="fixed top-0 left-0 right-0 z-50 px-4 md:px-6 py-3 md:py-3 flex items-center justify-between gap-4"
       >
         {/* Brand */}
-        <div className="flex flex-col leading-none shrink-0">
-          <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
+        <Link
+          href="/"
+          className="group flex flex-col leading-none shrink-0 cursor-pointer transition-all"
+        >
+          <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text group-hover:opacity-90 transition-opacity">
             FLOWS
           </span>
           <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
             Flood Level Observation &amp; Warning System
           </span>
-        </div>
+        </Link>
 
         {/* Center nav links — desktop only */}
         <div className="hidden md:flex items-center gap-1">
@@ -340,29 +334,15 @@ export default function LandingPage() {
         {/* Right controls */}
         <div className="flex items-center gap-2">
           {/* PST — sm+ only */}
-          <div className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-[4px] border border-border-surface bg-bg-crust/50 text-text-subtext font-mono text-[9px]">
+          <div className="hidden sm:flex items-center justify-center gap-1.5 h-7 px-2.5 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono text-[9px]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="https://flagsapi.com/PH/flat/64.png" alt="PH" className="w-3 h-3 object-contain" />
-            <span className="text-text-muted">PST:</span>
-            <span className="text-text-text">{phTime || "00:00:00 AM"}</span>
+            <img src="https://flagsapi.com/PH/flat/64.png" alt="Philippines Flag" className="w-3 h-3 object-contain select-none" />
+            <span className="text-text-muted font-bold uppercase tracking-wider">PST:</span>
+            <span className="text-text-text font-bold tracking-wider">{phTime || "12:00:00 AM"}</span>
           </div>
 
-          {/* Theme toggle */}
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-            className="w-7 h-7 flex items-center justify-center border border-border-surface bg-bg-crust/50 text-text-muted hover:text-primary-blue hover:border-primary-blue/40 rounded-[4px] cursor-pointer transition-colors duration-200"
-          >
-            {theme === 'dark' ? (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-              </svg>
-            ) : (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-          </button>
+          {/* Theme toggle (centralized) */}
+          <ThemeToggle />
 
           {/* Launch Dashboard — desktop */}
           <Link
@@ -628,7 +608,7 @@ export default function LandingPage() {
             {[...STACK, ...STACK, ...STACK, ...STACK].map((s, i) => (
               <div
                 key={`card-${i}`}
-                className="flex flex-col items-center justify-center gap-3 p-4 w-28 h-28 rounded-[6px] border shrink-0"
+                className="flex flex-col items-center justify-center gap-3 p-4 w-28 h-28 rounded-[6px] border shrink-0 tech-card"
                 style={{
                   borderColor: "var(--border-surface)",
                   background: "rgba(var(--bg-crust-rgb),0.6)",
@@ -656,6 +636,19 @@ export default function LandingPage() {
           }
           #stack-marquee-wrapper:hover #stack-marquee-track {
             animation-play-state: paused;
+          }
+          .tech-card {
+            transition: all 180ms ease-in-out;
+            cursor: pointer;
+            position: relative;
+          }
+          .tech-card:hover {
+            transform: scale(1.06);
+            border-color: var(--primary-blue) !important;
+            background: rgba(var(--bg-crust-rgb), 0.85) !important;
+            box-shadow: 0 0 24px rgba(59, 130, 246, 0.3) !important;
+            z-index: 10;
+            transition: all 120ms ease-out;
           }
         `}</style>
       </section>

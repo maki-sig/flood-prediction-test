@@ -15,7 +15,7 @@ interface HourlyData {
 
 interface FloodMapProps {
   data: any; // Using any for simplicity here, matches PredictionResponse from page.tsx
-  theme: "dark" | "light";
+  theme?: "dark" | "light";
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
 }
@@ -27,6 +27,9 @@ export default function FloodMap({
   getProbabilityCategory,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
+  const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
+    (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) ? "dark" : "light"
+  );
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
@@ -34,12 +37,10 @@ export default function FloodMap({
 
   // Synchronize map style with system theme selection
   useEffect(() => {
-    if (theme === "light") {
-      setMapStyle("light");
-    } else {
-      setMapStyle("dark");
-    }
-  }, [theme]);
+    const t = theme ?? appliedTheme;
+    if (t === "light") setMapStyle("light");
+    else setMapStyle("dark");
+  }, [theme, appliedTheme]);
 
   // Explicit global bounds clamped to the world to prevent infinite panning
   const worldBounds: L.LatLngBoundsExpression = [
@@ -87,15 +88,16 @@ export default function FloodMap({
     ];
 
     // Determine initial color style
+    const t = theme ?? appliedTheme;
     const category = getProbabilityCategory(
       selectedHourDetails?.probability || 0,
-      theme
+      t
     );
 
     const polygon = L.polygon(polygonCoords, {
       color: category.hex,
       fillColor: category.hex,
-      fillOpacity: theme === "dark" ? 0.18 : 0.14,
+      fillOpacity: (theme ?? appliedTheme) === "dark" ? 0.18 : 0.14,
       weight: 2,
       opacity: 0.85,
     }).addTo(map);
@@ -118,7 +120,7 @@ export default function FloodMap({
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, theme, appliedTheme]);
 
   // Dynamically swap the active tile layer based on mapStyle selection
   useEffect(() => {
@@ -167,21 +169,30 @@ export default function FloodMap({
   // Dynamically update polygon color styles on selected hour or theme change
   useEffect(() => {
     if (!selectedHourDetails) return;
-    const category = getProbabilityCategory(
-      selectedHourDetails.probability,
-      theme
-    );
+    const t = theme ?? appliedTheme;
+    const category = getProbabilityCategory(selectedHourDetails.probability, t);
 
     if (polygonRef.current) {
       polygonRef.current.setStyle({
         color: category.hex,
         fillColor: category.hex,
-        fillOpacity: theme === "dark" ? 0.18 : 0.14,
+        fillOpacity: t === "dark" ? 0.18 : 0.14,
         weight: 2,
         opacity: 0.85,
       });
     }
-  }, [selectedHourDetails, theme, getProbabilityCategory]);
+  }, [selectedHourDetails, theme, appliedTheme, getProbabilityCategory]);
+
+  // Observe changes to document class so map updates when ThemeToggle changes theme
+  useEffect(() => {
+    if (typeof document === "undefined" || theme) return;
+    const el = document.documentElement;
+    const obs = new MutationObserver(() => {
+      setAppliedTheme(el.classList.contains("dark") ? "dark" : "light");
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, [theme]);
 
   return (
     <>

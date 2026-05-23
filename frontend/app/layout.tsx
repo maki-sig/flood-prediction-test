@@ -31,12 +31,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      data-theme="dark"
-      className={cn("h-full", "antialiased", "dark", jetBrainsMono.variable, plusJakartaSans.variable, "font-sans")}
-    >
+    <html lang="en" data-theme="light" suppressHydrationWarning className={cn("h-full", "antialiased", jetBrainsMono.variable, plusJakartaSans.variable, "font-sans")}>
       <body className="min-h-full flex flex-col">
+        <script
+          // Initialize theme as early as possible to avoid flash
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{const t=localStorage.getItem('theme');const m=window.matchMedia('(prefers-color-scheme: dark)').matches;const apply=(theme)=>{const isDark=theme==='dark'||((theme!=='light'&&theme!=='dark')&&m);if(isDark)document.documentElement.classList.add('dark');else document.documentElement.classList.remove('dark');const applied=(theme==='dark'||theme==='light')?theme:(m?'dark':'light');document.documentElement.setAttribute('data-theme',applied);};apply(t);window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').addEventListener&&window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',function(){const current=localStorage.getItem('theme');if(current!=='dark'&&current!=='light')apply(null);});}catch(e){}})();`,
+          }}
+        />
         {children}
         <Analytics />
         <SpeedInsights />

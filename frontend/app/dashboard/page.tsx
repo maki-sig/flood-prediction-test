@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense } from "react";
 import dynamic from "next/dynamic";
 import Footer from "../../components/Footer";
+import ThemeToggle from "../../components/ThemeToggle";
+import Link from "next/link";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
@@ -86,43 +88,20 @@ export default function Home() {
 
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const hasThemeMounted = useRef(false);
+  const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  );
 
-  // Load saved theme on mount
   useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") as "dark" | "light";
-    if (savedTheme) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTheme(savedTheme);
-    }
+    if (typeof document === 'undefined') return;
+    const el = document.documentElement;
+    const obs = new MutationObserver(() => {
+      setAppliedTheme(el.classList.contains('dark') ? 'dark' : 'light');
+    });
+    obs.observe(el, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
   }, []);
-
-  // Manage theme state and inject data attribute
-  useEffect(() => {
-    // Skip writing to localStorage on initial render/mount to avoid overwriting stored settings
-    if (!hasThemeMounted.current) {
-      hasThemeMounted.current = true;
-      // Apply whatever the default or initial DOM state should be
-      const initialOrCurrentTheme = localStorage.getItem("theme") as "dark" | "light" || theme;
-      document.documentElement.setAttribute("data-theme", initialOrCurrentTheme);
-      if (initialOrCurrentTheme === "dark") {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
-      return;
-    }
-
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [theme]);
 
   // Handle scroll visibility for "Scroll to Top" button
   useEffect(() => {
@@ -243,8 +222,9 @@ export default function Home() {
   // Selected hour category
   const selectedHourCategory = useMemo(() => {
     if (!selectedHourDetails) return null;
-    return getProbabilityCategory(selectedHourDetails.probability, theme);
-  }, [selectedHourDetails, theme]);
+    const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+    return getProbabilityCategory(selectedHourDetails.probability, currentTheme);
+  }, [selectedHourDetails]);
 
   // SVG Chart Dimensions and Math
   const chartHeight = 220;
@@ -287,8 +267,9 @@ export default function Home() {
   // Overall Risk Category
   const summaryCategory = useMemo(() => {
     if (!activeData) return null;
-    return getProbabilityCategory(activeData.summary.peak_probability / 100, theme);
-  }, [activeData, theme]);
+    const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+    return getProbabilityCategory(activeData.summary.peak_probability / 100, currentTheme);
+  }, [activeData]);
 
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root">
@@ -298,12 +279,17 @@ export default function Home() {
       {/* Header Navigation */}
       <header className="relative w-full border-b border-border-surface bg-bg-mantle/95 backdrop-blur-md z-30 px-4 md:px-6 py-3 flex flex-row items-center justify-between gap-2 flows-header">
         <div className="flex items-center gap-2 md:gap-3">
-          <a href="/" className="group block cursor-pointer transition-all">
-            <h1 className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text">
+          <Link
+            href="/"
+            className="group flex flex-col leading-none shrink-0 cursor-pointer transition-all"
+          >
+            <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text group-hover:opacity-90 transition-opacity">
               FLOWS
-            </h1>
-            <p className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">ML-Driven Flood Prediction Module</p>
-          </a>
+            </span>
+            <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
+              Flood Level Observation &amp; Warning System
+            </span>
+          </Link>
         </div>
 
         {/* Live System Indicators & Theme Toggle */}
@@ -325,23 +311,7 @@ export default function Home() {
             <span className="text-text-text font-bold tracking-wider">{phTime || "12:00:00 AM"}</span>
           </div>
 
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-            className="flex items-center justify-center w-7 h-7 bg-bg-crust/50 border border-border-surface text-text-muted hover:text-primary-blue hover:border-primary-blue/40 rounded-[4px] cursor-pointer transition-colors flows-indicator"
-          >
-            {theme === 'dark' ? (
-              /* Sun Icon for Light Mode */
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-              </svg>
-            ) : (
-              /* Moon Icon for Dark Mode */
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-            )}
-          </button>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -500,7 +470,7 @@ export default function Home() {
             }>
               <FloodMap
                 data={data}
-                theme={theme}
+                theme={appliedTheme}
                 selectedHourDetails={selectedHourDetails}
                 getProbabilityCategory={getProbabilityCategory}
               />
@@ -627,7 +597,7 @@ export default function Home() {
                   <path
                     d={chartPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.yPrecip}`).join(" ")}
                     fill="none"
-                    stroke={theme === 'dark' ? "#3b82f6" : "#2563eb"}
+                    stroke={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"}
                     strokeWidth={1.5}
                     strokeLinecap="square"
                   />
@@ -685,7 +655,7 @@ export default function Home() {
                           strokeWidth={1}
                           strokeDasharray="2 2"
                         />
-                        <rect x={activePt.x - 3.5} y={activePt.yPrecip - 3.5} width={7} height={7} fill={theme === 'dark' ? "#3b82f6" : "#2563eb"} stroke="#ffffff" strokeWidth={1} />
+                        <rect x={activePt.x - 3.5} y={activePt.yPrecip - 3.5} width={7} height={7} fill={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"} stroke="#ffffff" strokeWidth={1} />
                         <rect x={activePt.x - 3.5} y={activePt.yProb - 3.5} width={7} height={7} fill="#f38ba8" stroke="#ffffff" strokeWidth={1} />
                       </g>
                     );
@@ -694,8 +664,8 @@ export default function Home() {
                   {/* Gradients using Catppuccin parameters */}
                   <defs>
                     <linearGradient id="cyan-gradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={theme === 'dark' ? "#3b82f6" : "#2563eb"} />
-                      <stop offset="100%" stopColor={theme === 'dark' ? "#3b82f6" : "#2563eb"} stopOpacity="0" />
+                      <stop offset="0%" stopColor={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"} />
+                      <stop offset="100%" stopColor={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"} stopOpacity="0" />
                     </linearGradient>
                     <linearGradient id="rose-gradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#f38ba8" />
@@ -824,7 +794,8 @@ export default function Home() {
                     </thead>
                     <tbody className="font-mono text-[11px]">
                       {activeData.hourly.map((h) => {
-                        const hrCat = getProbabilityCategory(h.probability, theme);
+                        const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+                        const hrCat = getProbabilityCategory(h.probability, currentTheme);
                         return (
                           <tr
                             key={h.hour}
