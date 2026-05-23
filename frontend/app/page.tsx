@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { AuroraBackground } from "@/components/ui/aurora-background";
 import Link from "next/link";
+import Footer from "../components/Footer";
 
 const FEATURES = [
   {
@@ -682,30 +683,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── FOOTER ── */}
-      <footer
-        className="w-full border-t px-4 md:px-10 py-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 font-mono text-[10px] uppercase tracking-widest"
-        style={{ borderColor: "var(--border-surface)", background: "var(--bg-crust)", color: "var(--text-muted)" }}
-      >
-        <div className="flex flex-col gap-1">
-          <span>© 2026 FLOWS – Flood Level Observation and Warning System.</span>
-          <span>
-            Made with ❤️ by Botis, M. (
-            <a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer"
-              className="hover:underline" style={{ color: "var(--primary-blue)" }}>
-              @maki-sig
-            </a>
-            )
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard" className="hover:underline" style={{ color: "var(--text-subtext)" }}>Dashboard</Link>
-          <span style={{ color: "var(--border-surface)" }}>·</span>
-          <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer"
-            className="hover:underline" style={{ color: "var(--text-subtext)" }}>
-            Open-Meteo
-          </a>
-        </div>
-      </footer>
+      <Footer />
 
       {/* Scroll to Top Button */}
       <button
