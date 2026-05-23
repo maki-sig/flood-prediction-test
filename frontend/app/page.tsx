@@ -115,7 +115,7 @@ const STACK = [
   },
   {
     name: "Tailwind CSS",
-    role: "Design System",
+    role: "CSS Framework",
     logo: (
       <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#0ea5e9] dark:text-[#38bdf8]" fill="currentColor">
         <path d="M12.001 4.8c-3.2 0-5.2 1.6-6 4.8 1.2-1.6 2.6-2.2 4.2-1.8.913.228 1.565.89 2.288 1.624C13.666 10.618 15.027 12 18.001 12c3.2 0 5.2-1.6 6-4.8-1.2 1.6-2.6 2.2-4.2 1.8-.913-.228-1.565-.89-2.288-1.624C16.337 6.182 14.976 4.8 12.001 4.8zm-6 7.2c-3.2 0-5.2 1.6-6 4.8 1.2-1.6 2.6-2.2 4.2-1.8.913.228 1.565.89 2.288 1.624 1.177 1.194 2.538 2.576 5.512 2.576 3.2 0 5.2-1.6 6-4.8-1.2 1.6-2.6 2.2-4.2 1.8-.913-.228-1.565-.89-2.288-1.624C10.337 13.382 8.976 12 6.001 12z" />
@@ -133,7 +133,7 @@ const STACK = [
   },
   {
     name: "FastAPI",
-    role: "Prediction API",
+    role: "API Framework",
     logo: (
       <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#009688] dark:text-[#4DB6AC]" fill="currentColor">
         <path d="M12 0C5.376 0 0 5.376 0 12c0 6.623 5.376 12 12 12 6.623 0 12-5.377 12-12 0-6.624-5.377-12-12-12zm-.624 21.619v-7.227H7.19L13.203 2.38v7.227h4.029L11.376 21.62z" />
@@ -150,8 +150,29 @@ const STACK = [
     ),
   },
   {
+    name: "TypeScript",
+    role: "Full-Stack Language",
+    logo: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="24" height="24" rx="3" fill="#3178C6" />
+        <clipPath id="ts-clip">
+          <rect width="24" height="24" rx="3" />
+        </clipPath>
+        <g clipPath="url(#ts-clip)">
+          {/* T */}
+          <path d="M1 10.5H13V13H8.75V26H5.25V13H1V10.5Z" fill="white" />
+          {/* S */}
+          <path
+            d="M15.5 10.5C13.015 10.5 11 12.2 11 14.5C11 16.8 12.4 17.9 14.7 18.7L15.6 19C17 19.5 17.8 19.9 17.8 20.8C17.8 21.6 17.05 22.2 15.8 22.2C14.35 22.2 13.35 21.45 12.95 20.2L10.6 21.3C11.35 23.3 13.2 24.5 15.8 24.5C18.5 24.5 20.5 22.8 20.5 20.5C20.5 18.2 19.1 17.1 16.8 16.3L15.9 16C14.55 15.5 13.8 15.15 13.8 14.35C13.8 13.7 14.4 13.1 15.5 13.1C16.55 13.1 17.3 13.6 17.7 14.55L19.9 13.4C19.1 11.65 17.5 10.5 15.5 10.5Z"
+            fill="white"
+          />
+        </g>
+      </svg>
+    ),
+  },
+  {
     name: "XGBoost",
-    role: "ML Classifier",
+    role: "ML Model",
     logo: (
       <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#1396F1] dark:text-[#38bdf8]" fill="none" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.5 2.121m-1.5-2.121c.251.023.501.05.75.082M5 14.5l-1.5 1.5m0 0A2.25 2.25 0 001.5 18v.75M5 14.5l4.5-4.5M19 14.5l1.5 1.5m0 0A2.25 2.25 0 0122.5 18v.75m-3-3.75l-4.5-4.5" />
@@ -230,7 +251,7 @@ export default function LandingPage() {
     window.scrollTo({ top, behavior: 'smooth' });
   };
 
-  
+
 
   useEffect(() => {
     const update = () => {
