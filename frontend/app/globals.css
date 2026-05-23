@@ -251,3 +251,48 @@ body {
   background-color: var(--bg-crust) !important;
   color: var(--text-muted) !important;
 }
+
+/* Aurora background layer used by the hero component */
+.aurora-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  filter: blur(10px);
+  mix-blend-mode: difference;
+  will-change: transform;
+  background-image: repeating-linear-gradient(100deg, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 7%, rgba(255,255,255,0) 10%, rgba(255,255,255,0) 12%, rgba(255,255,255,1) 16%), repeating-linear-gradient(100deg, var(--primary-blue, #3b82f6) 10%, var(--primary-blue-bg, #c7b0ff) 15%, var(--safe-from, #60a5fa) 20%, var(--text-subtext, #e9d5ff) 25%, var(--primary-blue, #60a5fa) 30%);
+  background-size: 300% 200%, 300% 200%;
+  background-position: 50% 50%, 50% 50%;
+  animation: aurora 60s linear infinite;
+}
+
+.dark .aurora-layer,
+:root[data-theme="dark"] .aurora-layer {
+  background-image: repeating-linear-gradient(100deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 7%, rgba(0,0,0,0) 10%, rgba(0,0,0,0) 12%, rgba(0,0,0,1) 16%), repeating-linear-gradient(100deg, var(--primary-blue, #0ea5e9) 10%, var(--color-primary-blue, #a78bfa) 15%, var(--safe-from, #60a5fa) 20%, var(--color-text-subtext, #c4b5fd) 25%, var(--primary-blue, #60a5fa) 30%);
+}
+
+.aurora-mask {
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+  mask-image: radial-gradient(ellipse at 100% 0%, black 10%, transparent 70%);
+}
+
+/* Ensure a visible fallback gradient so the aurora is noticeable on all themes */
+.aurora-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(600px 600px at 50% 20%, color-mix(in srgb, var(--primary-blue, #3b82f6) 12%, transparent), transparent 40%), radial-gradient(300px 300px at 85% 85%, color-mix(in srgb, var(--safe-from, #10b981) 8%, transparent), transparent 40%);
+  mix-blend-mode: screen;
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+@keyframes aurora {
+  from {
+    background-position: 50% 50%, 50% 50%;
+  }
+  to {
+    background-position: 350% 50%, 350% 50%;
+  }
+}
