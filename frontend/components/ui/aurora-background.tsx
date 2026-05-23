@@ -13,13 +13,13 @@ export const AuroraBackground = ({
   showRadialGradient = true,
   ...props
 }: AuroraBackgroundProps) => {
+  const mergedStyle = { background: "var(--bg-base)", color: "var(--text-text)", ...(props.style || {}) } as React.CSSProperties;
+
   return (
     <main>
       <div
-        className={cn(
-          "relative flex flex-col  h-[100vh] items-center justify-center bg-zinc-50 dark:bg-zinc-900  text-slate-950 transition-bg",
-          className
-        )}
+        className={cn("relative flex flex-col h-[100vh] items-center justify-center transition-bg", className)}
+        style={mergedStyle}
         {...props}
       >
         <div className="absolute inset-0 overflow-hidden">
