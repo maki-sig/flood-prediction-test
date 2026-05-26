@@ -345,7 +345,7 @@ export default function Home() {
   }, [activeData]);
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative pb-16 md:pb-0">
+    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative">
 
       {/* Main content wrapper */}
 
@@ -1017,8 +1017,10 @@ export default function Home() {
 
       </div>
 
-      {/* Footer (shared) */}
-      <Footer />
+      {/* Footer (shared) wrapped to extend background color on mobile bottom navbar overflow */}
+      <div className="w-full mt-auto bg-bg-crust pb-16 md:pb-0">
+        <Footer />
+      </div>
 
       {/* Mobile Bottom Navigation Bar */}
       <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border-surface bg-bg-mantle/95 backdrop-blur-md flex items-center justify-around py-2.5 px-4 shadow-[0_-4px_24px_rgba(0,0,0,0.4)]">
