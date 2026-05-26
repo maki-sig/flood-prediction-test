@@ -55,28 +55,28 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   const pct = p * 100;
   if (pct < 1.0) {
     return {
-      label: "No Chance of Flooding",
+      label: "Safe",
       colorClass: "text-safe-text border-safe-border bg-safe-bg",
       textColor: "text-safe-text",
       hex: theme === "dark" ? "#a7f3d0" : "#059669"
     };
   } else if (pct < 10.0) {
     return {
-      label: "Low Chance of Flooding",
+      label: "Low",
       colorClass: "text-primary-blue border-primary-blue-border bg-primary-blue-bg",
       textColor: "text-primary-blue",
       hex: theme === "dark" ? "#bae6fd" : "#0284c7"
     };
   } else if (pct < 35.0) {
     return {
-      label: "Moderate Chance of Flooding",
+      label: "Moderate",
       colorClass: "text-semantic-yellow border-semantic-yellow-border bg-semantic-yellow-bg",
       textColor: "text-semantic-yellow",
       hex: theme === "dark" ? "#fde68a" : "#d97706"
     };
   } else {
     return {
-      label: "High Chance of Flooding",
+      label: "High",
       colorClass: "text-semantic-red border-semantic-red-border bg-semantic-red-bg",
       textColor: "text-semantic-red",
       hex: theme === "dark" ? "#fecdd3" : "#e11d48"
@@ -115,7 +115,8 @@ export default function Home() {
       isProgrammaticScroll.current = false;
     }, 900);
     const subNav = document.getElementById("sub-nav");
-    const offset = subNav ? subNav.getBoundingClientRect().height : 48;
+    const isMobile = window.innerWidth < 768;
+    const offset = isMobile ? 12 : (subNav ? subNav.getBoundingClientRect().height : 48);
     const top = el.getBoundingClientRect().top + window.scrollY - offset - 12;
     window.scrollTo({ top, behavior: "smooth" });
   };
@@ -125,7 +126,8 @@ export default function Home() {
     const detect = () => {
       if (isProgrammaticScroll.current) return;
       const subNav = document.getElementById("sub-nav");
-      const offset = subNav ? subNav.getBoundingClientRect().height : 48;
+      const isMobile = window.innerWidth < 768;
+      const offset = isMobile ? 12 : (subNav ? subNav.getBoundingClientRect().height : 48);
       const detectionY = offset + 24;
       let current = sectionIds[0];
       for (const id of sectionIds) {
@@ -339,12 +341,7 @@ export default function Home() {
   }, [activeData]);
 
   return (
-    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative">
-
-      {/* Subtle Aurora Ambient Glow */}
-      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden opacity-[0.06]">
-        <div className="aurora-layer absolute inset-0 aurora-mask" />
-      </div>
+    <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative pb-16 md:pb-0">
 
       {/* Main content wrapper */}
 
@@ -391,23 +388,24 @@ export default function Home() {
       <div className="flex flex-col w-full z-10">
 
         {/* Sticky Sub-navigation */}
-        <div id="sub-nav" className="sticky top-0 z-40 w-full border-b border-border-surface bg-bg-base/90 backdrop-blur-md transition-all">
+        <div id="sub-nav" className="sticky top-0 z-40 w-full border-b border-border-surface bg-bg-base/90 backdrop-blur-md transition-all hidden md:block">
           <div
-            className="max-w-7xl mx-auto px-4 md:px-6 flex items-center justify-center gap-6 overflow-x-auto"
+            className="max-w-7xl mx-auto px-4 md:px-6 py-2.5 flex items-center justify-center gap-4 overflow-x-auto"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {DASHBOARD_SECTIONS.map((sec) => (
               <button
                 key={sec.id}
                 onClick={() => scrollToDashboardSection(sec.id)}
-                className={`relative py-3.5 px-1 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer ${activeDashboardSection === sec.id
+                className={`relative px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  activeDashboardSection === sec.id
                     ? "text-primary-blue"
                     : "text-text-muted hover:text-text-subtext"
-                  }`}
+                }`}
               >
                 {sec.label}
                 {activeDashboardSection === sec.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary-blue rounded-full" />
+                  <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-primary-blue" />
                 )}
               </button>
             ))}
@@ -434,7 +432,7 @@ export default function Home() {
                 <div className="flex flex-col gap-4">
 
                   {/* Timeframe selector tabs with Date display */}
-                  <div className="flex flex-col gap-1.5 order-last md:order-none border-t md:border-t-0 pt-4 md:pt-0 md:border-b border-border-surface md:pb-3 mt-2 md:mt-0">
+                  <div className="flex flex-col gap-1.5 order-last md:order-none mt-1">
                     <span className="text-[8px] font-bold font-mono tracking-widest uppercase text-[#89b4fa]">
                       EVALUATION TIMEFRAME
                     </span>
@@ -474,7 +472,7 @@ export default function Home() {
                   </div>
 
                   {/* Core Risk Metrics Grid */}
-                  <div className="grid grid-cols-3 gap-3 pt-3 border-t border-border-surface font-mono">
+                  <div className="grid grid-cols-3 gap-3 pt-1.5 font-mono">
                     <div className="flex flex-col">
                       <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">
                         <span className="hidden sm:inline">Peak Flood Risk</span>
@@ -511,40 +509,28 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Database Ingestion Details */}
-                  <div className="flex justify-between items-center pt-3.5 border-t border-border-surface/40 text-[10px] text-text-muted">
-                    <span>Last Update:</span>
-                    <span className="font-mono text-text-text font-semibold">{lastUpdated || "Syncing..."}</span>
-                  </div>
-
                   {/* Summary Card Block */}
-                  <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 text-xs font-light text-text-subtext select-text">
-                    <p className="text-[11px] leading-relaxed italic">
+                  <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 text-xs font-light text-text-subtext select-text mt-1">
+                    <p className="text-[11px] leading-relaxed italic text-text-subtext">
                       {activeData.summary.risk_level === "Safe" && (
-                        <>
-                          <span className="hidden sm:inline">Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!</span>
-                          <span className="inline sm:hidden">Clear conditions. No threat of flooding.</span>
-                        </>
+                        "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"
                       )}
                       {activeData.summary.risk_level === "Low" && (
-                        <>
-                          <span className="hidden sm:inline">Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy.</span>
-                          <span className="inline sm:hidden">Light rain expected. Minor puddles possible.</span>
-                        </>
+                        "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."
                       )}
                       {activeData.summary.risk_level === "Moderate" && (
-                        <>
-                          <span className="hidden sm:inline">Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety.</span>
-                          <span className="inline sm:hidden">Moderate flood risk. Watch for heavy rain.</span>
-                        </>
+                        "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."
                       )}
                       {activeData.summary.risk_level === "High" && (
-                        <>
-                          <span className="hidden sm:inline">CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately.</span>
-                          <span className="inline sm:hidden">CRITICAL: High risk of severe flooding. Avoid travel.</span>
-                        </>
+                        "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."
                       )}
                     </p>
+                  </div>
+
+                  {/* Database Ingestion Details (subtle, below descriptive text) */}
+                  <div className="flex justify-between items-center text-[9px] text-text-muted/80 px-1 mt-0.5">
+                    <span>Last Updated:</span>
+                    <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
                   </div>
                 </div>
               ) : (
@@ -570,7 +556,7 @@ export default function Home() {
             </div>
 
             {/* Scroll-down indicators inside the floating sidebar */}
-            <div className="mt-4 pt-2.5 border-t border-border-surface flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
+            <div className="mt-4 flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
               <span>Scroll down for timelines</span>
               <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 13l-7 7-7-7m14-6l-7 7-7-7" />
@@ -599,10 +585,10 @@ export default function Home() {
 
         {/* SECTION 2: Dynamic Chart Area (Displayed below the map through scrolling down) */}
         {activeData && chartPoints && (
-          <section id="forecast-curve" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-10 flex flex-col gap-6 z-10 border-b border-border-surface/40">
+          <section id="forecast-curve" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-10 flex flex-col gap-6 z-10">
 
             <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col gap-4 flows-card">
-              <div className="flex justify-between items-center flex-wrap gap-4 border-b border-border-surface pb-3">
+              <div className="flex justify-between items-center flex-wrap gap-4 pb-1">
                 <div>
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
                     <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -633,7 +619,7 @@ export default function Home() {
               <div className="relative w-full overflow-x-auto select-none pt-2">
                 <svg
                   viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-                  className="w-full h-auto overflow-visible md:min-w-[700px]"
+                  className="w-full h-auto overflow-visible min-w-[640px] md:min-w-[700px]"
                 >
                   {/* Gridlines */}
                   {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
@@ -801,13 +787,13 @@ export default function Home() {
 
         {/* SECTION 3: Node Inspectors & XGBoost Specifications */}
         {activeData && selectedHourDetails && selectedHourCategory && (
-          <section id="hour-inspector" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 z-10 border-b border-border-surface/40">
+          <section id="hour-inspector" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 z-10">
 
             {/* Hour Inspector Card (Left, 7 cols) */}
-            <div className="lg:col-span-7 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 relative overflow-hidden">
+            <div className="lg:col-span-7 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 relative overflow-hidden flows-card">
 
 
-              <div className="flex justify-between items-center border-b border-border-surface pb-2 mb-4">
+              <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
                   <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -981,7 +967,7 @@ export default function Home() {
                               {formatHour(h.hour)}
                             </span>
                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[8px] font-bold border ${hrCat.colorClass}`}>
-                              {hrCat.label.split(" Chance")[0]}
+                              {hrCat.label}
                             </span>
                           </div>
 
@@ -1029,11 +1015,51 @@ export default function Home() {
       {/* Footer (shared) */}
       <Footer />
 
+      {/* Mobile Bottom Navigation Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden border-t border-border-surface bg-bg-mantle/95 backdrop-blur-md flex items-center justify-around py-2.5 px-4 shadow-[0_-4px_24px_rgba(0,0,0,0.4)]">
+        {DASHBOARD_SECTIONS.map((sec) => {
+          const isActive = activeDashboardSection === sec.id;
+          return (
+            <button
+              key={sec.id}
+              onClick={() => scrollToDashboardSection(sec.id)}
+              className={`flex flex-col items-center gap-1 font-mono text-[9px] uppercase tracking-wider transition-colors duration-200 cursor-pointer ${
+                isActive ? "text-primary-blue" : "text-text-muted hover:text-text-subtext"
+              }`}
+            >
+              {sec.id === "overview" && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+              )}
+              {sec.id === "forecast-curve" && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                </svg>
+              )}
+              {sec.id === "hour-inspector" && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              )}
+              {sec.id === "logs-timeline" && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+              <span className="text-[8px] tracking-tight">{sec.id === "forecast-curve" ? "Forecast" : sec.id === "hour-inspector" ? "Inspector" : sec.label.split(" ")[0]}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Scroll to Top Button */}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-        className={`fixed bottom-6 right-6 z-50 flex items-center justify-center cursor-pointer transition-all duration-300 ${showScrollTop ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none"
-          }`}
+        className={`fixed bottom-20 md:bottom-6 right-6 z-50 flex items-center justify-center cursor-pointer transition-all duration-300 ${
+          showScrollTop ? "opacity-100 scale-100" : "opacity-0 scale-75 pointer-events-none"
+        }`}
         title="Scroll to Top"
       >
         {/* Outer Hexagon (Acts as Border) */}
