@@ -367,13 +367,14 @@ export default function Home() {
 
         {/* Live System Indicators & Theme Toggle */}
         <div className="flex items-center gap-2 md:gap-3 font-mono text-[9px] text-text-subtext">
-          {/* NEXT UPDATE — hidden on smallest screens */}
-          <div className="hidden sm:flex items-center justify-center gap-1.5 h-7 px-2.5 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
+          {/* NEXT UPDATE */}
+          <div className="flex items-center justify-center gap-1.5 h-7 px-2.5 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
             <span className="text-text-subtext font-bold uppercase tracking-wider">NEXT UPDATE IN:</span>
             <span className="text-text-text font-bold tracking-wider">{timeUntilNextHour}</span>
           </div>
 
-          <div className="flex items-center justify-center gap-1.5 h-7 px-2.5 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
+          {/* PST digital clock - hidden on mobile */}
+          <div className="hidden sm:flex items-center justify-center gap-1.5 h-7 px-2.5 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator font-mono">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://flagsapi.com/PH/flat/64.png"
@@ -532,7 +533,7 @@ export default function Home() {
                   </div>
 
                   {/* Last Updated — subtle */}
-                  <div className="flex justify-between items-center text-[9px] text-text-muted/80 px-1">
+                  <div className="flex gap-1.5 items-center text-[9px] text-text-muted/80 px-1">
                     <span>Last Updated:</span>
                     <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
                   </div>
@@ -562,7 +563,7 @@ export default function Home() {
             {/* Scroll-down indicators inside the floating sidebar */}
             <div className="mt-4 flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
               <span>Scroll down for timelines</span>
-              <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-3.5 h-3.5 text-text-muted animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 13l-7 7-7-7m14-6l-7 7-7-7" />
               </svg>
             </div>
@@ -1049,7 +1050,7 @@ export default function Home() {
               )}
               {sec.id === "logs-timeline" && (
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               )}
               <span className="text-[8px] tracking-tight">{sec.id === "forecast-curve" ? "Forecast" : sec.id === "hour-inspector" ? "Inspector" : sec.label.split(" ")[0]}</span>
