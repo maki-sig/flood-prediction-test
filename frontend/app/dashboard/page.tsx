@@ -56,6 +56,7 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   if (pct < 1.0) {
     return {
       label: "Safe",
+      heroLabel: "No Flood Risk",
       colorClass: "text-safe-text border-safe-border bg-safe-bg",
       textColor: "text-safe-text",
       hex: theme === "dark" ? "#a7f3d0" : "#059669"
@@ -63,6 +64,7 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   } else if (pct < 10.0) {
     return {
       label: "Low",
+      heroLabel: "Low Flood Risk",
       colorClass: "text-primary-blue border-primary-blue-border bg-primary-blue-bg",
       textColor: "text-primary-blue",
       hex: theme === "dark" ? "#bae6fd" : "#0284c7"
@@ -70,6 +72,7 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   } else if (pct < 35.0) {
     return {
       label: "Moderate",
+      heroLabel: "Moderate Flood Risk",
       colorClass: "text-semantic-yellow border-semantic-yellow-border bg-semantic-yellow-bg",
       textColor: "text-semantic-yellow",
       hex: theme === "dark" ? "#fde68a" : "#d97706"
@@ -77,6 +80,7 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   } else {
     return {
       label: "High",
+      heroLabel: "High Flood Risk",
       colorClass: "text-semantic-red border-semantic-red-border bg-semantic-red-bg",
       textColor: "text-semantic-red",
       hex: theme === "dark" ? "#fecdd3" : "#e11d48"
@@ -429,12 +433,12 @@ export default function Home() {
               </div>
 
               {activeData && summaryCategory ? (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
 
-                  {/* Timeframe selector tabs with Date display */}
-                  <div className="flex flex-col gap-1.5 order-last md:order-none mt-1">
-                    <span className="text-[8px] font-bold font-mono tracking-widest uppercase text-[#89b4fa]">
-                      EVALUATION TIMEFRAME
+                  {/* Timeframe selector tabs */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted">
+                      Forecast Period
                     </span>
                     <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
                       {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
@@ -461,57 +465,57 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Categorized Risk Summary */}
-                  <div className="flex flex-col gap-1">
-                    <div className="flex justify-between items-center mt-1">
-                      <span className="text-sm font-light text-text-subtext">Overall Assessment</span>
-                      <span className={`flex items-center justify-center px-2.5 py-0.5 rounded-[4px] text-[10px] font-mono font-black uppercase tracking-wider border ${summaryCategory.colorClass}`}>
-                        {summaryCategory.label}
+                  {/* Hero Risk Classification — visually dominant */}
+                  <div className={`rounded-[4px] border p-4 flex items-center justify-between gap-3 ${summaryCategory.colorClass}`}>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[8px] font-mono font-bold uppercase tracking-widest opacity-70">Overall Assessment</span>
+                      <span className="text-xl font-extrabold font-mono tracking-tight leading-none">{summaryCategory.heroLabel}</span>
+                      <span className="text-[10px] font-light opacity-75 mt-0.5">
+                        Peak: {activeData.summary.peak_probability.toFixed(2)}% at {formatHour(activeData.summary.peak_hour)}
                       </span>
+                    </div>
+                    {/* Checkmark for safe/low, warning triangle for moderate/high */}
+                    {(summaryCategory.label === "Safe" || summaryCategory.label === "Low") ? (
+                      <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                    )}
+                  </div>
+
+                  {/* Core Risk Metrics — inspector-style panel */}
+                  <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
+                      <span className={`text-sm md:text-base font-extrabold ${summaryCategory?.textColor || 'text-text-text'}`}>
+                        {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                      </span>
+                      <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
+                    </div>
+
+                    <div className="flex flex-col gap-1 border-l border-border-surface/40">
+                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
+                      <span className="text-sm md:text-base font-extrabold text-text-text">
+                        {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
+                      </span>
+                      <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
+                    </div>
+
+                    <div className="flex flex-col gap-1 border-l border-border-surface/40">
+                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
+                      <span className="text-sm md:text-base font-extrabold text-text-subtext">
+                        {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                      </span>
+                      <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
                     </div>
                   </div>
 
-                  {/* Core Risk Metrics Grid */}
-                  <div className="grid grid-cols-3 gap-3 pt-1.5 font-mono">
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">
-                        <span className="hidden sm:inline">Peak Flood Risk</span>
-                        <span className="inline sm:hidden">Peak Risk</span>
-                      </span>
-                      <span className={`text-xl md:text-2xl font-extrabold ${summaryCategory?.textColor || 'text-text-text'} mt-1`}>
-                        {activeData.summary.peak_probability.toFixed(2)}%
-                      </span>
-                      <span className="text-[9px] text-text-muted mt-1">
-                        Peak at {formatHour(activeData.summary.peak_hour)}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">
-                        <span className="hidden sm:inline">Total Rainfall</span>
-                        <span className="inline sm:hidden">Rainfall</span>
-                      </span>
-                      <span className="text-xl md:text-2xl font-extrabold text-text-text mt-1">
-                        {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[10px] text-text-subtext font-light ml-0.5">mm</span>
-                      </span>
-                      <span className="text-[9px] text-text-muted mt-1">24h Forecast</span>
-                    </div>
-
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-text-subtext">
-                        <span className="hidden sm:inline">Average Risk</span>
-                        <span className="inline sm:hidden">Avg Risk</span>
-                      </span>
-                      <span className="text-xl md:text-2xl font-extrabold text-text-subtext mt-1">
-                        {activeData.summary.average_probability.toFixed(2)}%
-                      </span>
-                      <span className="text-[9px] text-text-muted mt-1">Mean Prob</span>
-                    </div>
-                  </div>
-
-                  {/* Summary Card Block */}
-                  <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 text-xs font-light text-text-subtext select-text mt-1">
-                    <p className="text-[11px] leading-relaxed italic text-text-subtext">
+                  {/* Advisory text */}
+                  <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 select-text">
+                    <p className="text-[11px] leading-relaxed text-text-subtext">
                       {activeData.summary.risk_level === "Safe" && (
                         "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"
                       )}
@@ -527,8 +531,8 @@ export default function Home() {
                     </p>
                   </div>
 
-                  {/* Database Ingestion Details (subtle, below descriptive text) */}
-                  <div className="flex justify-between items-center text-[9px] text-text-muted/80 px-1 mt-0.5">
+                  {/* Last Updated — subtle */}
+                  <div className="flex justify-between items-center text-[9px] text-text-muted/80 px-1">
                     <span>Last Updated:</span>
                     <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
                   </div>
