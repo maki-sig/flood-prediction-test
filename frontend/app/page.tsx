@@ -697,7 +697,9 @@ export default function LandingPage() {
       </section>
 
       {/* ── FOOTER ── */}
-      <Footer />
+      <div className="w-full mt-auto bg-bg-crust pb-6 md:pb-0">
+        <Footer />
+      </div>
 
       {/* Scroll to Top Button */}
       <button

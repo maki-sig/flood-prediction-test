@@ -224,6 +224,7 @@ export async function GET(request: NextRequest) {
         timezone: "Asia/Manila",
         timezone_abbreviation: "PST",
       },
+      last_updated: dbRecords[0]?.created_at || null,
       days: {
         today: {
           date: todayStr,
