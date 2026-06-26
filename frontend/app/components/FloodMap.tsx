@@ -19,6 +19,8 @@ interface FloodMapProps {
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
   isEditMode?: boolean;
+  pinnedPosition?: [number, number] | null;
+  onMapClick?: (latlng: [number, number]) => void;
 }
 
 export default function FloodMap({
@@ -27,6 +29,8 @@ export default function FloodMap({
   selectedHourDetails,
   getProbabilityCategory,
   isEditMode,
+  pinnedPosition,
+  onMapClick,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
@@ -36,16 +40,88 @@ export default function FloodMap({
   const [mapReady, setMapReady] = useState(false);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
 
-  // Recalculate map container size on edit mode toggle
+  // Recalculate map container size and center layout on edit mode toggle
   useEffect(() => {
     if (!mapInstance) return;
+    
+    // Trigger loading screen overlay during transition
+    setMapReady(false);
+    
+    // Invalidate size immediately so Leaflet knows the dimensions changed
     mapInstance.invalidateSize();
+    
+    if (isEditMode) {
+      // Zoom in a bit when entering edit mode
+      mapInstance.flyTo([13.635, 123.25], 14, {
+        animate: true,
+        duration: 0.8,
+      });
+    } else {
+      // Smoothly fly back to fit the bounds of the Naga City polygon when edit mode is cancelled
+      if (polygonRef.current) {
+        mapInstance.flyToBounds(polygonRef.current.getBounds(), {
+          padding: [20, 20],
+          animate: true,
+          duration: 0.8,
+        });
+      }
+    }
+
     const timer = setTimeout(() => {
       mapInstance.invalidateSize();
-    }, 320);
+      if (!isEditMode && polygonRef.current) {
+        mapInstance.fitBounds(polygonRef.current.getBounds(), {
+          padding: [20, 20],
+          animate: true,
+        });
+      }
+      // Hide the loading overlay after transition completes
+      setMapReady(true);
+    }, 500);
+
     return () => clearTimeout(timer);
   }, [isEditMode, mapInstance]);
+
+  // Handle map click events in edit mode
+  useEffect(() => {
+    if (!mapInstance || !isEditMode || !onMapClick) return;
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      onMapClick([e.latlng.lat, e.latlng.lng]);
+    };
+
+    mapInstance.on("click", handleMapClick);
+
+    return () => {
+      mapInstance.off("click", handleMapClick);
+    };
+  }, [mapInstance, isEditMode, onMapClick]);
+
+  // Render or update pinned marker position
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
+    }
+
+    if (pinnedPosition) {
+      const redIcon = L.icon({
+        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+
+      const marker = L.marker(pinnedPosition, { icon: redIcon }).addTo(mapInstance);
+      markerRef.current = marker;
+    }
+  }, [pinnedPosition, mapInstance]);
 
   // Synchronize map style with system theme selection
   useEffect(() => {

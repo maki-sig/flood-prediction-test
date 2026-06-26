@@ -94,12 +94,20 @@ const EVAC_SECTIONS = [
 export default function ManageEvacPage() {
   const [loading, setLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [pinnedPosition, setPinnedPosition] = useState<[number, number] | null>(null);
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
+
+  // Clear pinned position when leaving edit mode
+  useEffect(() => {
+    if (!isEditMode) {
+      setPinnedPosition(null);
+    }
+  }, [isEditMode]);
 
   const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
   const isProgrammaticScroll = useRef(false);
@@ -265,6 +273,27 @@ export default function ManageEvacPage() {
 
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative">
+      <style>{`
+        .flows-sidebar-custom {
+          transition: all 0.5s ease-in-out !important;
+        }
+        @media (min-width: 768px) {
+          .flows-sidebar-custom {
+            margin-left: ${isEditMode ? "-420px" : "0px"} !important;
+            opacity: ${isEditMode ? "0" : "1"} !important;
+            width: 420px !important;
+            min-width: 420px !important;
+          }
+        }
+        @media (max-width: 767px) {
+          .flows-sidebar-custom {
+            max-height: ${isEditMode ? "0px" : "2000px"} !important;
+            opacity: ${isEditMode ? "0" : "1"} !important;
+            padding: ${isEditMode ? "0px" : "20px"} !important;
+            overflow: hidden !important;
+          }
+        }
+      `}</style>
 
 
       {/* Header Navigation */}
@@ -312,10 +341,7 @@ export default function ManageEvacPage() {
         <section id="overview" className="relative w-full h-auto md:h-[calc(100vh-50px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
 
           {/* DOCKED SIDEBAR PANEL */}
-          <aside className={`shrink-0 h-auto md:h-full border-b md:border-b-0 border-border-surface bg-bg-mantle flex flex-col justify-between select-none font-sans z-20 flows-sidebar transition-all duration-300 ease-in-out transform ${isEditMode
-              ? "w-0 md:w-0 p-0 border-r-0 overflow-hidden opacity-0 pointer-events-none -translate-x-full"
-              : "w-full md:w-[420px] border-r p-5 overflow-y-auto opacity-100 translate-x-0"
-            }`}>
+          <aside className="shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans z-20 flows-sidebar flows-sidebar-custom">
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
@@ -470,27 +496,63 @@ export default function ManageEvacPage() {
           {/* DOCKED MAP PANEL */}
           <div className="flex-1 h-[400px] md:h-full relative z-10 bg-[#11111b]">
             {isEditMode && (
-              <div className="absolute top-4 md:top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 border border-border-surface bg-bg-mantle px-3.5 py-2 md:px-4 md:py-2.5 rounded-[4px] shadow-2xl font-mono text-[9px] md:text-[10px] text-text-text max-w-[90vw] md:max-w-none animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="absolute top-4 md:top-6 left-1/2 -translate-x-1/2 z-30 flex items-center h-7 md:h-10 gap-3 border border-border-surface bg-bg-mantle px-3.5 py-1 md:px-4 md:py-2 rounded-[4px] shadow-2xl font-mono text-[9px] md:text-[10px] text-text-text max-w-[90vw] md:max-w-none animate-in fade-in slide-in-from-top-4 duration-300">
                 <span className="flex items-center gap-2 font-sans font-medium text-text-subtext">
-                  <svg className="w-3.5 h-3.5 text-semantic-red shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  <span>Edit Mode: Click anywhere on the map to place the shelter pin</span>
+                  <span>
+                    {pinnedPosition
+                      ? "Pin placed. Confirm to save shelter details."
+                      : "Click anywhere on the map to place the shelter pin"}
+                  </span>
                 </span>
-                <div className="h-4 w-[1px] bg-border-surface/85 mx-0.5" />
-                <button
-                  onClick={() => setIsEditMode(false)}
-                  className="px-2 py-1 text-[8px] md:text-[9px] font-bold uppercase rounded-[2px] bg-[#f38ba8]/20 border border-[#f38ba8]/30 hover:bg-[#f38ba8]/35 text-[#f38ba8] cursor-pointer transition-all duration-150 font-sans"
-                >
-                  Cancel
-                </button>
+                <div className="h-full border-r border-border-surface self-stretch mx-1" />
+                <div className="flex items-center gap-1.5">
+                  {pinnedPosition && (
+                    <button
+                      onClick={() => {
+                        console.log("Confirming shelter position:", pinnedPosition);
+                      }}
+                      className="px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold font-mono uppercase rounded-[2px] cursor-pointer border transition-all bg-emerald-500/20 border-emerald-500/30 hover:bg-emerald-500/35 text-emerald-500"
+                    >
+                      Confirm
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsEditMode(false)}
+                    className="px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold font-mono uppercase rounded-[2px] cursor-pointer border transition-all bg-[#f38ba8]/20 border-[#f38ba8]/30 hover:bg-[#f38ba8]/35 text-[#f38ba8]"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
             <Suspense fallback={
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
-                <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
+              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-[#1e1e2e]">
+                <div className="relative w-full h-full overflow-hidden">
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      backgroundImage:
+                        "linear-gradient(rgba(59,130,246,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.06) 1px, transparent 1px)",
+                      backgroundSize: "48px 48px",
+                    }}
+                  />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                    <div className="relative w-10 h-10">
+                      <div className="absolute inset-0 rounded-full border-2 border-primary-blue/20" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary-blue animate-spin" />
+                    </div>
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-primary-blue">
+                      Rendering Cartographic Engine
+                    </span>
+                    <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                      Loading tile layers&hellip;
+                    </span>
+                  </div>
+                </div>
               </div>
             }>
               <FloodMap
@@ -499,6 +561,8 @@ export default function ManageEvacPage() {
                 selectedHourDetails={selectedHourDetails}
                 getProbabilityCategory={getProbabilityCategory}
                 isEditMode={isEditMode}
+                pinnedPosition={pinnedPosition}
+                onMapClick={setPinnedPosition}
               />
             </Suspense>
           </div>
