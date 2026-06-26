@@ -18,6 +18,7 @@ interface FloodMapProps {
   theme?: "dark" | "light";
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
+  isEditMode?: boolean;
 }
 
 export default function FloodMap({
@@ -25,6 +26,7 @@ export default function FloodMap({
   theme,
   selectedHourDetails,
   getProbabilityCategory,
+  isEditMode,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
@@ -34,6 +36,16 @@ export default function FloodMap({
   const [mapReady, setMapReady] = useState(false);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
+
+  // Recalculate map container size on edit mode toggle
+  useEffect(() => {
+    if (!mapInstance) return;
+    mapInstance.invalidateSize();
+    const timer = setTimeout(() => {
+      mapInstance.invalidateSize();
+    }, 320);
+    return () => clearTimeout(timer);
+  }, [isEditMode, mapInstance]);
 
   // Synchronize map style with system theme selection
   useEffect(() => {
