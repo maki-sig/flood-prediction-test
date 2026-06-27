@@ -47,6 +47,13 @@ export interface ShelterPin {
     zone_num: number;
     max_capacity: number;
     curr_capacity: number;
+    shelter_head: {
+      fname: string;
+      mname: string;
+      lname: string;
+      contact_num: string;
+      socmed_url: string;
+    } | null;
   } | null;
 }
 
@@ -95,3 +102,55 @@ export async function createShelterEntry(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Sends shelter update payload to the PUT /api/shelters route.
+ */
+export async function updateShelterEntry(
+  shelter_id: number,
+  payload: ShelterFormPayload
+): Promise<InsertResult> {
+  try {
+    const res = await fetch("/api/shelters", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shelter_id, payload }),
+    });
+
+    const json = await res.json();
+
+    if (!res.ok || json.error) {
+      return { success: false, error: json.error ?? `HTTP ${res.status}` };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Network error";
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Sends a DELETE request for a shelter to the /api/shelters route.
+ */
+export async function deleteShelterEntry(
+  shelter_id: number
+): Promise<InsertResult> {
+  try {
+    const res = await fetch(`/api/shelters?shelter_id=${shelter_id}`, {
+      method: "DELETE",
+    });
+
+    const json = await res.json();
+
+    if (!res.ok || json.error) {
+      return { success: false, error: json.error ?? `HTTP ${res.status}` };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Network error";
+    return { success: false, error: message };
+  }
+}
+

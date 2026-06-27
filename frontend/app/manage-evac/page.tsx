@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Footer from "../../components/Footer";
 import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
-import { createShelterEntry, fetchShelterPins } from "../../lib/evac-actions";
+import { createShelterEntry, fetchShelterPins, updateShelterEntry, deleteShelterEntry } from "../../lib/evac-actions";
 import type { ShelterPin } from "../../lib/evac-actions";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
@@ -116,6 +116,12 @@ export default function ManageEvacPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [shelterPins, setShelterPins] = useState<ShelterPin[]>([]);
+  // Selected shelter info panel state
+  const [selectedShelterPin, setSelectedShelterPin] = useState<ShelterPin | null>(null);
+  const [showShelterInfo, setShowShelterInfo] = useState(false);
+  const [shelterInfoVisible, setShelterInfoVisible] = useState(false);
+  const [riskOverviewVisible, setRiskOverviewVisible] = useState(false);
+  const [updatingShelterId, setUpdatingShelterId] = useState<number | null>(null);
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -138,10 +144,25 @@ export default function ManageEvacPage() {
   // Trigger form entrance animation when form mounts
   useEffect(() => {
     if (showShelterForm) {
-      // Small rAF delay so the element is in the DOM before opacity transitions
       requestAnimationFrame(() => setFormVisible(true));
     }
   }, [showShelterForm]);
+
+  // Trigger info panel entrance animation when it mounts
+  useEffect(() => {
+    if (showShelterInfo) {
+      requestAnimationFrame(() => setShelterInfoVisible(true));
+    }
+  }, [showShelterInfo, selectedShelterPin?.loc_id]);
+
+  // Trigger Risk Overview slide-in entrance animation
+  useEffect(() => {
+    if (!showShelterInfo && !showShelterForm) {
+      requestAnimationFrame(() => setRiskOverviewVisible(true));
+    } else {
+      setRiskOverviewVisible(false);
+    }
+  }, [showShelterInfo, showShelterForm]);
 
   // Animated close: fade out first, then unmount
   const closeForm = () => {
@@ -154,25 +175,109 @@ export default function ManageEvacPage() {
       setShelterType("Volunteering Household"); setMaxCapacity(""); setCurrCapacity("");
       setFname(""); setMname(""); setLname(""); setContactNum(""); setSocmedUrl("");
       setSubmitError(null); setSubmitSuccess(false);
+      setUpdatingShelterId(null);
     }, 300);
   };
 
-  // Submit handler — inserts shelter_head → shelter → location in order
+  // Animated close for shelter info panel
+  const closeShelterInfo = () => {
+    setShelterInfoVisible(false);
+    setTimeout(() => {
+      setShowShelterInfo(false);
+      setSelectedShelterPin(null);
+    }, 300);
+  };
+
+  // Open shelter info panel from a pin click
+  const openShelterInfo = (pin: ShelterPin) => {
+    // Close form if open
+    if (showShelterForm) closeForm();
+    setShelterInfoVisible(false);
+    setSelectedShelterPin(pin);
+    setShowShelterInfo(true);
+  };
+
+  // Pre-populates the form with existing shelter details and opens the form view
+  const startUpdateFlow = () => {
+    if (!selectedShelterPin) return;
+    const s = selectedShelterPin.shelter;
+    const sh = s?.shelter_head;
+
+    setShelterName(s?.shelter_name ?? "");
+    setZoneNum(s?.zone_num?.toString() ?? "");
+    setBarangay(s?.barangay_name ?? "");
+    setShelterType(s?.type ?? "Volunteering Household");
+    setMaxCapacity(s?.max_capacity?.toString() ?? "");
+    setCurrCapacity(s?.curr_capacity?.toString() ?? "");
+    setFname(sh?.fname ?? "");
+    setMname(sh?.mname ?? "");
+    setLname(sh?.lname ?? "");
+    setContactNum(sh?.contact_num ?? "");
+    setSocmedUrl(sh?.socmed_url ?? "");
+    setPinnedPosition([selectedShelterPin.latitude, selectedShelterPin.longitude]);
+
+    setUpdatingShelterId(selectedShelterPin.shelter_id);
+
+    // Transition: Fade out info panel, then open form
+    setShelterInfoVisible(false);
+    setTimeout(() => {
+      setShowShelterInfo(false);
+      setShowShelterForm(true);
+    }, 300);
+  };
+
+  // Delete shelter handler
+  const handleDeleteShelter = async () => {
+    if (!selectedShelterPin) return;
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete "${selectedShelterPin.shelter?.shelter_name ?? 'this shelter'}"?\nThis action cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    setIsSubmitting(true);
+    const result = await deleteShelterEntry(selectedShelterPin.shelter_id);
+    setIsSubmitting(false);
+
+    if (result.success) {
+      closeShelterInfo();
+      fetchShelterPins().then(setShelterPins);
+    } else {
+      alert(`Error deleting shelter: ${result.error}`);
+    }
+  };
+
+  // Submit handler — supports both insert and update
   const handleShelterSubmit = async () => {
     if (!pinnedPosition) return;
     setIsSubmitting(true);
     setSubmitError(null);
-    const result = await createShelterEntry({
-      shelterName, zoneNum, barangay,
-      type: shelterType, maxCapacity, currCapacity,
-      fname, mname, lname, contactNum, socmedUrl,
+
+    const payload = {
+      shelterName,
+      zoneNum,
+      barangay,
+      type: shelterType,
+      maxCapacity,
+      currCapacity,
+      fname,
+      mname,
+      lname,
+      contactNum,
+      socmedUrl,
       latitude: pinnedPosition[0],
       longitude: pinnedPosition[1],
-    });
+    };
+
+    let result;
+    if (updatingShelterId) {
+      result = await updateShelterEntry(updatingShelterId, payload);
+    } else {
+      result = await createShelterEntry(payload);
+    }
+
     setIsSubmitting(false);
     if (result.success) {
       setSubmitSuccess(true);
-      // Refresh pins to show the newly added shelter
       fetchShelterPins().then(setShelterPins);
       setTimeout(() => closeForm(), 1500);
     } else {
@@ -426,15 +531,17 @@ export default function ManageEvacPage() {
           <aside className="shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans z-20 flows-sidebar flows-sidebar-custom">
             {showShelterForm ? (
               <div
+                key="shelter-form"
                 className={`flex flex-col gap-4 h-full sidebar-panel ${formVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
               >
+
                 {/* Form Header */}
                 <div className="flex justify-between items-center border-b border-border-surface pb-2.5 shrink-0">
                   <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
                     <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    New Shelter Details - Naga City
+                    {updatingShelterId ? "Update Shelter Details - Naga City" : "New Shelter Details - Naga City"}
                   </h2>
                   <button
                     onClick={closeForm}
@@ -613,13 +720,198 @@ export default function ManageEvacPage() {
                     ) : submitSuccess ? (
                       "✓ Saved!"
                     ) : (
-                      "Save Shelter Details"
+                      updatingShelterId ? "Update Shelter Details" : "Save Shelter Details"
                     )}
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="sidebar-panel sidebar-panel-visible flex flex-col justify-between h-full">
+            ) : showShelterInfo && selectedShelterPin ? (() => {
+              const s = selectedShelterPin.shelter;
+              const sh = s?.shelter_head;
+              const pct = s ? Math.round((s.curr_capacity / Math.max(s.max_capacity, 1)) * 100) : 0;
+              const isEvacCenter = s?.type === "Evacuation Center";
+
+              // Dynamic status colors based on occupancy level (no shadows)
+              let capacityColor = "bg-emerald-500";
+              let capacityTextColor = "text-emerald-400";
+              let capacityBorderColor = "border-emerald-500/20";
+              let capacityBgClass = "bg-emerald-500/10";
+
+              if (pct >= 90) {
+                capacityColor = "bg-rose-500";
+                capacityTextColor = "text-rose-400";
+                capacityBorderColor = "border-rose-500/20";
+                capacityBgClass = "bg-rose-500/10";
+              } else if (pct >= 60) {
+                capacityColor = "bg-amber-500";
+                capacityTextColor = "text-amber-400";
+                capacityBorderColor = "border-amber-500/20";
+                capacityBgClass = "bg-amber-500/10";
+              }
+
+              // Get point person initials
+              const initials = sh
+                ? [sh.fname?.[0], sh.lname?.[0]].filter(Boolean).join("").toUpperCase()
+                : "PP";
+
+              return (
+                 <div
+                   key={`shelter-info-${selectedShelterPin.loc_id}`}
+                   className={`flex flex-col justify-between h-full sidebar-panel ${shelterInfoVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
+                 >
+                  <div className="flex flex-col gap-4">
+                    {/* Header */}
+                    <div className="flex justify-between items-center border-b border-border-surface pb-2.5 shrink-0">
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                        Shelter Information
+                      </h2>
+                      <button
+                        onClick={closeShelterInfo}
+                        className="text-[9px] font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+
+                    {/* Content Section */}
+                    <div className="flex flex-col gap-3">
+                      
+                      {/* Section 1: Shelter Name, Type, Address, and Coordinates */}
+                      <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3.5 flex justify-between items-end gap-3">
+                        <div className="flex flex-col gap-3 min-w-0">
+                          <div className="text-sm font-extrabold text-text-text leading-snug tracking-tight truncate" title={s?.shelter_name ?? ""}>
+                            {s?.shelter_name ?? "Unnamed Facility"}
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-mono text-text-subtext">
+                              {s?.barangay_name ? `Brgy. ${s.barangay_name}, Zone ${s.zone_num ?? "—"}` : "—"}
+                            </span>
+                            <span className="text-[8.5px] font-mono text-text-muted">
+                              {selectedShelterPin.latitude.toFixed(5)}°, {selectedShelterPin.longitude.toFixed(5)}°
+                            </span>
+                          </div>
+                        </div>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[7.5px] font-mono font-bold uppercase tracking-wider border shrink-0 ${isEvacCenter
+                          ? "bg-primary-blue-bg text-primary-blue border-primary-blue-border"
+                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                        }`}>
+                          {s?.type ?? "Unknown"}
+                        </span>
+                      </div>
+
+                      {/* Section 2: Occupancy Dashboard (styled like overall assessment cards) */}
+                      <div className="bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 flex flex-col gap-3">
+                        <div className="grid grid-cols-2 gap-2 text-center font-mono">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Occupants</span>
+                            <span className="text-base font-extrabold text-text-text">{s?.curr_capacity ?? 0}</span>
+                            <span className="text-[7px] font-sans font-light text-text-muted">Current Load</span>
+                          </div>
+                          <div className="flex flex-col gap-0.5 border-l border-border-surface/40">
+                            <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Max Load</span>
+                            <span className="text-base font-extrabold text-text-subtext">{s?.max_capacity ?? 0}</span>
+                            <span className="text-[7px] font-sans font-light text-text-muted">Limit</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 pt-2 border-t border-border-surface/20">
+                          <div className="h-1.5 bg-bg-base rounded-full overflow-hidden border border-border-surface/30">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${capacityColor}`}
+                              style={{ width: `${Math.min(pct, 100)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between items-center text-[9px] font-mono">
+                            <span className="text-text-muted">CAPACITY LOAD</span>
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] font-bold border ${capacityTextColor} ${capacityBorderColor} ${capacityBgClass}`}>
+                              {pct}% {pct >= 90 ? "FULL" : pct >= 60 ? "HIGH" : "AVAILABLE"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Point Person details */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted px-1">
+                          Point Person
+                        </span>
+                        {sh ? (
+                          <div className="bg-bg-crust/20 border border-border-surface/40 rounded-[4px] p-3.5 flex flex-col gap-2">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[8px] font-mono text-text-muted uppercase">Full Name</span>
+                              <span className="text-[11px] font-bold text-text-text">
+                                {[sh.fname, sh.mname, sh.lname].filter(Boolean).join(" ")}
+                              </span>
+                            </div>
+                            
+                            <div className="flex gap-4 pt-2 border-t border-border-surface/20 font-mono text-[9px]">
+                              {sh.contact_num && (
+                                <a
+                                  href={`tel:${sh.contact_num}`}
+                                  className="text-text-subtext hover:text-primary-blue flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                  <svg className="w-3 h-3 text-primary-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                  </svg>
+                                  <span>{sh.contact_num}</span>
+                                </a>
+                              )}
+                              {sh.socmed_url && (
+                                <a
+                                  href={sh.socmed_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-text-subtext hover:text-primary-blue truncate flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                  <svg className="w-3 h-3 text-primary-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                  </svg>
+                                  <span>Profile</span>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-mono text-text-muted italic px-1">No point person on record</span>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* Action Buttons — pinned to sidebar bottom */}
+                  <div className="shrink-0 pt-4 mt-2 border-t border-border-surface flex gap-2">
+                    <button
+                      onClick={startUpdateFlow}
+                      disabled={isSubmitting}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary-blue hover:bg-primary-blue/90 active:scale-[0.98] text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded-[4px] transition-all duration-150 cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      Update Info
+                    </button>
+                    <button
+                      onClick={handleDeleteShelter}
+                      disabled={isSubmitting}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-bg-crust border border-border-surface hover:bg-[#f38ba8]/10 hover:border-[#f38ba8]/30 hover:text-[#f38ba8] active:scale-[0.98] text-text-subtext text-[10px] font-mono font-bold uppercase tracking-wider rounded-[4px] transition-all duration-150 cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5 shrink-0 text-[#f38ba8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div
+                key="risk-overview"
+                className={`flex flex-col justify-between h-full sidebar-panel animate-in fade-in duration-500 ${riskOverviewVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
+              >
                 <div className="flex flex-col gap-4">
                   <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
@@ -747,7 +1039,7 @@ export default function ManageEvacPage() {
                           <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
                           <button
                             onClick={() => fetchPrediction()}
-                            className="px-3 py-1.5 bg-[#11111b] border border-[#313244] hover:bg-[#313244] text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
+                            className="px-3 py-1.5 bg-bg-crust border border-border-surface hover:bg-border-surface/40 text-text-text text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
                           >
                             Connect Sensor
                           </button>
@@ -842,6 +1134,7 @@ export default function ManageEvacPage() {
                 onMapClick={setPinnedPosition}
                 defaultStyle="satellite"
                 shelterPins={shelterPins}
+                onPinClick={openShelterInfo}
               />
             </Suspense>
           </div>

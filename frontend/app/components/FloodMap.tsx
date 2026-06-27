@@ -24,6 +24,7 @@ interface FloodMapProps {
   onMapClick?: (latlng: [number, number]) => void;
   defaultStyle?: "dark" | "light" | "satellite";
   shelterPins?: ShelterPin[];
+  onPinClick?: (pin: ShelterPin) => void;
 }
 
 export default function FloodMap({
@@ -36,6 +37,7 @@ export default function FloodMap({
   onMapClick,
   defaultStyle = "dark",
   shelterPins = [],
+  onPinClick,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">(defaultStyle);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
@@ -283,6 +285,14 @@ export default function FloodMap({
   useEffect(() => {
     if (!mapInstance || !shelterPins.length) return;
 
+    // Guard: ensure the map container is actually mounted in the DOM
+    try {
+      const container = mapInstance.getContainer();
+      if (!container || !container.isConnected) return;
+    } catch {
+      return;
+    }
+
     // Clear any previously rendered shelter markers
     shelterMarkersRef.current.forEach((m) => m.remove());
     shelterMarkersRef.current = [];
@@ -297,16 +307,23 @@ export default function FloodMap({
     });
 
     shelterPins.forEach((pin) => {
-      const marker = L.marker([pin.latitude, pin.longitude], { icon: redIcon })
-        .addTo(mapInstance);
-      shelterMarkersRef.current.push(marker);
+      try {
+        const marker = L.marker([pin.latitude, pin.longitude], { icon: redIcon })
+          .addTo(mapInstance);
+        if (onPinClick) {
+          marker.on("click", () => onPinClick(pin));
+        }
+        shelterMarkersRef.current.push(marker);
+      } catch {
+        // Skip pins that fail to render (e.g. map not ready)
+      }
     });
 
     return () => {
       shelterMarkersRef.current.forEach((m) => m.remove());
       shelterMarkersRef.current = [];
     };
-  }, [shelterPins, mapInstance]);
+  }, [shelterPins, mapInstance, onPinClick]);
 
   // Observe changes to document class so map updates when ThemeToggle changes theme
   useEffect(() => {
