@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import Footer from "../../components/Footer";
 import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
+import { createShelterEntry, fetchShelterPins } from "../../lib/evac-actions";
+import type { ShelterPin } from "../../lib/evac-actions";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
@@ -95,6 +97,25 @@ export default function ManageEvacPage() {
   const [loading, setLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [pinnedPosition, setPinnedPosition] = useState<[number, number] | null>(null);
+  const [showShelterForm, setShowShelterForm] = useState(false);
+  const [formVisible, setFormVisible] = useState(false);
+  // Form field state
+  const [shelterName, setShelterName] = useState("");
+  const [zoneNum, setZoneNum] = useState("");
+  const [barangay, setBarangay] = useState("");
+  const [shelterType, setShelterType] = useState("Volunteering Household");
+  const [maxCapacity, setMaxCapacity] = useState("");
+  const [currCapacity, setCurrCapacity] = useState("");
+  const [fname, setFname] = useState("");
+  const [mname, setMname] = useState("");
+  const [lname, setLname] = useState("");
+  const [contactNum, setContactNum] = useState("");
+  const [socmedUrl, setSocmedUrl] = useState("");
+  // Submission state
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [shelterPins, setShelterPins] = useState<ShelterPin[]>([]);
   const [data, setData] = useState<PredictionResponse | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -102,12 +123,62 @@ export default function ManageEvacPage() {
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
 
-  // Clear pinned position when leaving edit mode
+  // Clear pinned position when leaving edit mode and form mode is not active
   useEffect(() => {
-    if (!isEditMode) {
+    if (!isEditMode && !showShelterForm) {
       setPinnedPosition(null);
     }
-  }, [isEditMode]);
+  }, [isEditMode, showShelterForm]);
+
+  // Fetch saved shelter pins on mount
+  useEffect(() => {
+    fetchShelterPins().then(setShelterPins);
+  }, []);
+
+  // Trigger form entrance animation when form mounts
+  useEffect(() => {
+    if (showShelterForm) {
+      // Small rAF delay so the element is in the DOM before opacity transitions
+      requestAnimationFrame(() => setFormVisible(true));
+    }
+  }, [showShelterForm]);
+
+  // Animated close: fade out first, then unmount
+  const closeForm = () => {
+    setFormVisible(false);
+    setTimeout(() => {
+      setShowShelterForm(false);
+      setPinnedPosition(null);
+      // Reset all form fields
+      setShelterName(""); setZoneNum(""); setBarangay("");
+      setShelterType("Volunteering Household"); setMaxCapacity(""); setCurrCapacity("");
+      setFname(""); setMname(""); setLname(""); setContactNum(""); setSocmedUrl("");
+      setSubmitError(null); setSubmitSuccess(false);
+    }, 300);
+  };
+
+  // Submit handler — inserts shelter_head → shelter → location in order
+  const handleShelterSubmit = async () => {
+    if (!pinnedPosition) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    const result = await createShelterEntry({
+      shelterName, zoneNum, barangay,
+      type: shelterType, maxCapacity, currCapacity,
+      fname, mname, lname, contactNum, socmedUrl,
+      latitude: pinnedPosition[0],
+      longitude: pinnedPosition[1],
+    });
+    setIsSubmitting(false);
+    if (result.success) {
+      setSubmitSuccess(true);
+      // Refresh pins to show the newly added shelter
+      fetchShelterPins().then(setShelterPins);
+      setTimeout(() => closeForm(), 1500);
+    } else {
+      setSubmitError(result.error);
+    }
+  };
 
   const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
   const isProgrammaticScroll = useRef(false);
@@ -277,6 +348,18 @@ export default function ManageEvacPage() {
         .flows-sidebar-custom {
           transition: all 0.5s ease-in-out !important;
         }
+        .sidebar-panel {
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .sidebar-panel-hidden {
+          opacity: 0;
+          transform: translateX(-12px);
+          pointer-events: none;
+        }
+        .sidebar-panel-visible {
+          opacity: 1;
+          transform: translateX(0);
+        }
         @media (min-width: 768px) {
           .flows-sidebar-custom {
             margin-left: ${isEditMode ? "-420px" : "0px"} !important;
@@ -339,158 +422,355 @@ export default function ManageEvacPage() {
 
         {/* SECTION: Docked Split Viewport — Sidebar Analytics (Left) + Map (Right) */}
         <section id="overview" className="relative w-full h-auto md:h-[calc(100vh-50px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
-
           {/* DOCKED SIDEBAR PANEL */}
           <aside className="shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans z-20 flows-sidebar flows-sidebar-custom">
-            <div className="flex flex-col gap-4">
-              <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                  </svg>
-                  Risk Overview
-                </h2>
-                <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
-              </div>
+            {showShelterForm ? (
+              <div
+                className={`flex flex-col gap-4 h-full sidebar-panel ${formVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
+              >
+                {/* Form Header */}
+                <div className="flex justify-between items-center border-b border-border-surface pb-2.5 shrink-0">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    New Shelter Details - Naga City
+                  </h2>
+                  <button
+                    onClick={closeForm}
+                    className="text-[9px] font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
 
-              {activeData && summaryCategory ? (
-                <div className="flex flex-col gap-3">
-
-                  {/* Timeframe selector tabs */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted">
-                      Forecast Period
+                {/* Form Fields (Scrollable area) */}
+                <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-5 select-text">
+                  {/* SECTION 1: SHELTER DETAILS */}
+                  <div className="flex flex-col gap-3">
+                    <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-text-muted border-b border-border-surface/40 pb-1 mb-1">
+                      Shelter Information
                     </span>
-                    <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
-                      {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
-                        const dateVal = data?.days[period]?.date || "";
-                        const formattedDate = dateVal
-                          ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                          : "";
-                        return (
-                          <button
-                            key={period}
-                            onClick={() => setSelectedPeriod(period)}
-                            className={`py-1.5 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
-                              ? "bg-primary-blue text-white"
-                              : "text-text-subtext hover:bg-border-surface/30 hover:text-text-text"
-                              }`}
-                          >
-                            <span className="leading-none">{period === "dayAfterTomorrow" ? "3RD DAY" : period}</span>
-                            <span className={`text-[7px] leading-none mt-0.5 font-light ${selectedPeriod === period ? "text-white/80" : "text-text-muted"}`}>
-                              {formattedDate}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
 
-                  {/* Hero Risk Classification */}
-                  <div className={`rounded-[4px] border p-4 flex items-center justify-between gap-3 ${summaryCategory.colorClass}`}>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[8px] font-mono font-bold uppercase tracking-widest opacity-70">Overall Assessment</span>
-                      <span className="text-xl font-extrabold font-mono tracking-tight leading-none">{summaryCategory.heroLabel}</span>
-                      <span className="text-[10px] font-light opacity-75 mt-0.5">
-                        Peak: {activeData.summary.peak_probability.toFixed(2)}% at {formatHour(activeData.summary.peak_hour)}
-                      </span>
-                    </div>
-                    {(summaryCategory.label === "Safe" || summaryCategory.label === "Low") ? (
-                      <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                      </svg>
-                    )}
-                  </div>
-
-                  {/* Core Risk Metrics */}
-                  <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
                     <div className="flex flex-col gap-1">
-                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
-                      <span className={`text-sm md:text-base font-extrabold ${summaryCategory?.textColor || 'text-text-text'}`}>
-                        {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
-                      </span>
-                      <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
+                      <label className="text-[9px] font-mono text-text-subtext uppercase">Shelter Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Naga City Sports Complex"
+                        value={shelterName}
+                        onChange={(e) => setShelterName(e.target.value)}
+                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                      />
                     </div>
 
-                    <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
-                      <span className="text-sm md:text-base font-extrabold text-text-text">
-                        {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
-                      </span>
-                      <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Zone / Phase Number</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Zone 1"
+                          value={zoneNum}
+                          onChange={(e) => setZoneNum(e.target.value)}
+                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Barangay</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Concepcion Grande"
+                          value={barangay}
+                          onChange={(e) => setBarangay(e.target.value)}
+                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        />
+                      </div>
                     </div>
 
-                    <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
-                      <span className="text-sm md:text-base font-extrabold text-text-subtext">
-                        {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
-                      </span>
-                      <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-mono text-text-subtext uppercase">Type</label>
+                      <select
+                        value={shelterType}
+                        onChange={(e) => setShelterType(e.target.value)}
+                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text focus:outline-none focus:border-primary-blue cursor-pointer"
+                      >
+                        <option value="Volunteering Household">Volunteering Household</option>
+                        <option value="Evacuation Center">Evacuation Center</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Max Capacity</label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="e.g. 200"
+                          value={maxCapacity}
+                          onChange={(e) => setMaxCapacity(e.target.value)}
+                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Current Capacity</label>
+                        <input
+                          type="number"
+                          min={0}
+                          placeholder="e.g. 0"
+                          value={currCapacity}
+                          onChange={(e) => setCurrCapacity(e.target.value)}
+                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  {/* Advisory text */}
-                  <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 select-text">
-                    <p className="text-[11px] leading-relaxed text-text-subtext">
-                      {activeData.summary.risk_level === "Safe" && (
-                        "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"
-                      )}
-                      {activeData.summary.risk_level === "Low" && (
-                        "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."
-                      )}
-                      {activeData.summary.risk_level === "Moderate" && (
-                        "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."
-                      )}
-                      {activeData.summary.risk_level === "High" && (
-                        "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."
-                      )}
-                    </p>
-                  </div>
+                  {/* SECTION 2: SHELTER HEAD */}
+                  <div className="flex flex-col gap-3">
+                    <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-text-muted border-b border-border-surface/40 pb-1 mb-1">
+                      Point Person Details
+                    </span>
 
-                  {/* Last Updated */}
-                  <div className="flex gap-1.5 items-center text-[9px] text-text-muted/80 px-1">
-                    <span>Last Updated:</span>
-                    <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">First Name</label>
+                        <input
+                          type="text"
+                          placeholder="First Name"
+                          value={fname}
+                          onChange={(e) => setFname(e.target.value)}
+                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Middle Name</label>
+                        <input
+                          type="text"
+                          placeholder="Middle Name"
+                          value={mname}
+                          onChange={(e) => setMname(e.target.value)}
+                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-mono text-text-subtext uppercase">Last Name</label>
+                      <input
+                        type="text"
+                        placeholder="Last Name"
+                        value={lname}
+                        onChange={(e) => setLname(e.target.value)}
+                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-mono text-text-subtext uppercase">Contact Number</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 09123456789"
+                        value={contactNum}
+                        onChange={(e) => setContactNum(e.target.value)}
+                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-mono text-text-subtext uppercase">Social Media URL</label>
+                      <input
+                        type="url"
+                        placeholder="e.g. https://facebook.com/username"
+                        value={socmedUrl}
+                        onChange={(e) => setSocmedUrl(e.target.value)}
+                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                      />
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <div className="py-20 flex flex-col items-center justify-center gap-3">
-                  {loading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                      <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
-                    </>
+
+                {/* Form Footer */}
+                <div className="border-t border-border-surface pt-4 shrink-0 flex flex-col gap-2">
+                  {submitError && (
+                    <p className="text-[9px] font-mono text-[#f38ba8] bg-[#f38ba8]/10 border border-[#f38ba8]/20 rounded-[4px] px-2.5 py-1.5 leading-relaxed">
+                      ⚠ {submitError}
+                    </p>
+                  )}
+                  {submitSuccess && (
+                    <p className="text-[9px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-[4px] px-2.5 py-1.5">
+                      ✓ Shelter saved successfully!
+                    </p>
+                  )}
+                  <button
+                    onClick={handleShelterSubmit}
+                    disabled={isSubmitting || submitSuccess}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-blue hover:bg-primary-blue/90 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] transition-all duration-150 shadow-[0_0_16px_rgba(59,130,246,0.2)] cursor-pointer"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                        Saving...
+                      </>
+                    ) : submitSuccess ? (
+                      "✓ Saved!"
+                    ) : (
+                      "Save Shelter Details"
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="sidebar-panel sidebar-panel-visible flex flex-col justify-between h-full">
+                <div className="flex flex-col gap-4">
+                  <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      Risk Overview
+                    </h2>
+                    <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
+                  </div>
+
+                  {activeData && summaryCategory ? (
+                    <div className="flex flex-col gap-3">
+
+                      {/* Timeframe selector tabs */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted">
+                          Forecast Period
+                        </span>
+                        <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
+                          {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
+                            const dateVal = data?.days[period]?.date || "";
+                            const formattedDate = dateVal
+                              ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                              : "";
+                            return (
+                              <button
+                                key={period}
+                                onClick={() => setSelectedPeriod(period)}
+                                className={`py-1.5 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
+                                  ? "bg-primary-blue text-white"
+                                  : "text-text-subtext hover:bg-border-surface/30 hover:text-text-text"
+                                  }`}
+                              >
+                                <span className="leading-none">{period === "dayAfterTomorrow" ? "3RD DAY" : period}</span>
+                                <span className={`text-[7px] leading-none mt-0.5 font-light ${selectedPeriod === period ? "text-white/80" : "text-text-muted"}`}>
+                                  {formattedDate}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Hero Risk Classification */}
+                      <div className={`rounded-[4px] border p-4 flex items-center justify-between gap-3 ${summaryCategory.colorClass}`}>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[8px] font-mono font-bold uppercase tracking-widest opacity-70">Overall Assessment</span>
+                          <span className="text-xl font-extrabold font-mono tracking-tight leading-none">{summaryCategory.heroLabel}</span>
+                          <span className="text-[10px] font-light opacity-75 mt-0.5">
+                            Peak: {activeData.summary.peak_probability.toFixed(2)}% at {formatHour(activeData.summary.peak_hour)}
+                          </span>
+                        </div>
+                        {(summaryCategory.label === "Safe" || summaryCategory.label === "Low") ? (
+                          <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                          </svg>
+                        )}
+                      </div>
+
+                      {/* Core Risk Metrics */}
+                      <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
+                          <span className={`text-sm md:text-base font-extrabold ${summaryCategory?.textColor || 'text-text-text'}`}>
+                            {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                          </span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
+                        </div>
+
+                        <div className="flex flex-col gap-1 border-l border-border-surface/40">
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
+                          <span className="text-sm md:text-base font-extrabold text-text-text">
+                            {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
+                          </span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
+                        </div>
+
+                        <div className="flex flex-col gap-1 border-l border-border-surface/40">
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
+                          <span className="text-sm md:text-base font-extrabold text-text-subtext">
+                            {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                          </span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
+                        </div>
+                      </div>
+
+                      {/* Advisory text */}
+                      <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 select-text">
+                        <p className="text-[11px] leading-relaxed text-text-subtext">
+                          {activeData.summary.risk_level === "Safe" && (
+                            "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"
+                          )}
+                          {activeData.summary.risk_level === "Low" && (
+                            "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."
+                          )}
+                          {activeData.summary.risk_level === "Moderate" && (
+                            "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."
+                          )}
+                          {activeData.summary.risk_level === "High" && (
+                            "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."
+                          )}
+                        </p>
+                      </div>
+
+                      {/* Last Updated */}
+                      <div className="flex gap-1.5 items-center text-[9px] text-text-muted/80 px-1">
+                        <span>Last Updated:</span>
+                        <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
+                      </div>
+                    </div>
                   ) : (
-                    <>
-                      <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
-                      <button
-                        onClick={() => fetchPrediction()}
-                        className="px-3 py-1.5 bg-[#11111b] border border-[#313244] hover:bg-[#313244] text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
-                      >
-                        Connect Sensor
-                      </button>
-                    </>
+                    <div className="py-20 flex flex-col items-center justify-center gap-3">
+                      {loading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
+                          <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
+                          <button
+                            onClick={() => fetchPrediction()}
+                            className="px-3 py-1.5 bg-[#11111b] border border-[#313244] hover:bg-[#313244] text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
+                          >
+                            Connect Sensor
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Add Evacuation Shelter CTA — pinned to sidebar bottom */}
-            <div className="shrink-0 pt-4 mt-2 border-t border-border-surface">
-              <button
-                onClick={() => setIsEditMode(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-blue hover:bg-primary-blue/90 active:scale-[0.98] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] transition-all duration-150 shadow-[0_0_16px_rgba(59,130,246,0.2)] cursor-pointer"
-              >
-                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Evacuation Shelter
-              </button>
-            </div>
+                {/* Add Evacuation Shelter CTA — pinned to sidebar bottom */}
+                <div className="shrink-0 pt-4 mt-2 border-t border-border-surface">
+                  <button
+                    onClick={() => setIsEditMode(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-blue hover:bg-primary-blue/90 active:scale-[0.98] text-white text-[10px] font-mono font-bold uppercase tracking-widest rounded-[4px] transition-all duration-150 shadow-[0_0_16px_rgba(59,130,246,0.2)] cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Evacuation Shelter
+                  </button>
+                </div>
+              </div>
+            )}
           </aside>
 
           {/* DOCKED MAP PANEL */}
@@ -498,10 +778,6 @@ export default function ManageEvacPage() {
             {isEditMode && (
               <div className="absolute top-4 md:top-6 left-1/2 -translate-x-1/2 z-30 flex items-center h-7 md:h-10 gap-3 border border-border-surface bg-bg-mantle px-3.5 py-1 md:px-4 md:py-2 rounded-[4px] shadow-2xl font-mono text-[9px] md:text-[10px] text-text-text max-w-[90vw] md:max-w-none animate-in fade-in slide-in-from-top-4 duration-300">
                 <span className="flex items-center gap-2 font-sans font-medium text-text-subtext">
-                  <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
                   <span>
                     {pinnedPosition
                       ? "Pin placed. Confirm to save shelter details."
@@ -513,7 +789,8 @@ export default function ManageEvacPage() {
                   {pinnedPosition && (
                     <button
                       onClick={() => {
-                        console.log("Confirming shelter position:", pinnedPosition);
+                        setIsEditMode(false);
+                        setShowShelterForm(true);
                       }}
                       className="px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold font-mono uppercase rounded-[2px] cursor-pointer border transition-all bg-emerald-500/20 border-emerald-500/30 hover:bg-emerald-500/35 text-emerald-500"
                     >
@@ -563,6 +840,8 @@ export default function ManageEvacPage() {
                 isEditMode={isEditMode}
                 pinnedPosition={pinnedPosition}
                 onMapClick={setPinnedPosition}
+                defaultStyle="satellite"
+                shelterPins={shelterPins}
               />
             </Suspense>
           </div>

@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import type { ShelterPin } from "../../lib/evac-actions";
 
 interface HourlyData {
   time: string;
@@ -14,13 +15,15 @@ interface HourlyData {
 }
 
 interface FloodMapProps {
-  data: any; // Using any for simplicity here, matches PredictionResponse from page.tsx
+  data: any;
   theme?: "dark" | "light";
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
   isEditMode?: boolean;
   pinnedPosition?: [number, number] | null;
   onMapClick?: (latlng: [number, number]) => void;
+  defaultStyle?: "dark" | "light" | "satellite";
+  shelterPins?: ShelterPin[];
 }
 
 export default function FloodMap({
@@ -31,8 +34,10 @@ export default function FloodMap({
   isEditMode,
   pinnedPosition,
   onMapClick,
+  defaultStyle = "dark",
+  shelterPins = [],
 }: FloodMapProps) {
-  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
+  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">(defaultStyle);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
     (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) ? "dark" : "light"
   );
@@ -41,17 +46,18 @@ export default function FloodMap({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const shelterMarkersRef = useRef<L.Marker[]>([]);
 
   // Recalculate map container size and center layout on edit mode toggle
   useEffect(() => {
     if (!mapInstance) return;
-    
+
     // Trigger loading screen overlay during transition
     setMapReady(false);
-    
+
     // Invalidate size immediately so Leaflet knows the dimensions changed
     mapInstance.invalidateSize();
-    
+
     if (isEditMode) {
       // Zoom in a bit when entering edit mode
       mapInstance.flyTo([13.635, 123.25], 14, {
@@ -79,7 +85,7 @@ export default function FloodMap({
       }
       // Hide the loading overlay after transition completes
       setMapReady(true);
-    }, 500);
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, [isEditMode, mapInstance]);
@@ -124,11 +130,13 @@ export default function FloodMap({
   }, [pinnedPosition, mapInstance]);
 
   // Synchronize map style with system theme selection
+  // Note: if defaultStyle is overridden (e.g. satellite), theme changes are ignored
   useEffect(() => {
+    if (defaultStyle === "satellite") return; // Satellite pages always stay satellite
     const t = theme ?? appliedTheme;
     if (t === "light") setMapStyle("light");
     else setMapStyle("dark");
-  }, [theme, appliedTheme]);
+  }, [theme, appliedTheme, defaultStyle]);
 
   // Explicit global bounds clamped to the world to prevent infinite panning
   const worldBounds: L.LatLngBoundsExpression = [
@@ -271,6 +279,35 @@ export default function FloodMap({
     }
   }, [selectedHourDetails, theme, appliedTheme, getProbabilityCategory]);
 
+  // Render shelter pins fetched from the database
+  useEffect(() => {
+    if (!mapInstance || !shelterPins.length) return;
+
+    // Clear any previously rendered shelter markers
+    shelterMarkersRef.current.forEach((m) => m.remove());
+    shelterMarkersRef.current = [];
+
+    const redIcon = L.icon({
+      iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+    });
+
+    shelterPins.forEach((pin) => {
+      const marker = L.marker([pin.latitude, pin.longitude], { icon: redIcon })
+        .addTo(mapInstance);
+      shelterMarkersRef.current.push(marker);
+    });
+
+    return () => {
+      shelterMarkersRef.current.forEach((m) => m.remove());
+      shelterMarkersRef.current = [];
+    };
+  }, [shelterPins, mapInstance]);
+
   // Observe changes to document class so map updates when ThemeToggle changes theme
   useEffect(() => {
     if (typeof document === "undefined" || theme) return;
@@ -408,11 +445,10 @@ export default function FloodMap({
             <button
               key={style}
               onClick={() => setMapStyle(style)}
-              className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${
-                mapStyle === style
-                  ? "bg-primary-blue border-primary-blue text-white"
-                  : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text"
-              }`}
+              className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${mapStyle === style
+                ? "bg-primary-blue border-primary-blue text-white"
+                : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text"
+                }`}
             >
               {style}
             </button>

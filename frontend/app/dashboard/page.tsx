@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import Footer from "../../components/Footer";
 import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
+import { fetchShelterPins } from "../../lib/evac-actions";
+import type { ShelterPin } from "../../lib/evac-actions";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
@@ -104,10 +106,16 @@ export default function Home() {
   const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
+  const [shelterPins, setShelterPins] = useState<ShelterPin[]>([]);
 
   const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
   const isProgrammaticScroll = useRef(false);
   const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch saved shelter pins on mount
+  useEffect(() => {
+    fetchShelterPins().then(setShelterPins);
+  }, []);
 
   const scrollToDashboardSection = (id: string) => {
     const el = document.getElementById(id);
@@ -582,6 +590,7 @@ export default function Home() {
                 theme={appliedTheme}
                 selectedHourDetails={selectedHourDetails}
                 getProbabilityCategory={getProbabilityCategory}
+                shelterPins={shelterPins}
               />
             </Suspense>
           </div>
