@@ -5,6 +5,35 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
 
+const NAGA_POLYGON_COORDS: [number, number][] = [
+  [13.609968789298009, 123.238264647267],
+  [13.603295049815724, 123.18504962357763],
+  [13.625651336134831, 123.17440661883975],
+  [13.647338250079457, 123.19431933738156],
+  [13.662351100172332, 123.25028094293877],
+  [13.67380990980166, 123.28804495293048],
+  [13.670041129846703, 123.29437332892063],
+  [13.674735584354098, 123.30273542780482],
+  [13.674263815340117, 123.32482711860592],
+  [13.654805049817684, 123.37582600721545],
+  [13.650044097448697, 123.31723756354909],
+  [13.609968789298009, 123.238264647267],
+];
+
+function isPointInPolygon(point: [number, number], vs: [number, number][]): boolean {
+  const x = point[0]; // Latitude
+  const y = point[1]; // Longitude
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 interface HourlyData {
   time: string;
   hour: number;
@@ -45,6 +74,8 @@ export default function FloodMap({
   );
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [isCursorInside, setIsCursorInside] = useState(true);
+
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
@@ -92,18 +123,53 @@ export default function FloodMap({
     return () => clearTimeout(timer);
   }, [isEditMode, mapInstance]);
 
-  // Handle map click events in edit mode
+  // Handle map click events & cursor hover boundary checks in edit mode
   useEffect(() => {
-    if (!mapInstance || !isEditMode || !onMapClick) return;
+    if (!mapInstance || !isEditMode) {
+      setIsCursorInside(true);
+      return;
+    }
 
     const handleMapClick = (e: L.LeafletMouseEvent) => {
-      onMapClick([e.latlng.lat, e.latlng.lng]);
+      const inside = isPointInPolygon([e.latlng.lat, e.latlng.lng], NAGA_POLYGON_COORDS);
+      if (!inside) return; // Block placing pin outside
+      if (onMapClick) {
+        onMapClick([e.latlng.lat, e.latlng.lng]);
+      }
+    };
+
+    const handleMouseMove = (e: L.LeafletMouseEvent) => {
+      const inside = isPointInPolygon([e.latlng.lat, e.latlng.lng], NAGA_POLYGON_COORDS);
+      setIsCursorInside(inside);
+      
+      const container = mapInstance.getContainer();
+      if (inside) {
+        container.style.cursor = "crosshair";
+      } else {
+        container.style.cursor = "not-allowed";
+      }
+    };
+
+    const handleMouseOut = () => {
+      setIsCursorInside(true);
+      try {
+        const container = mapInstance.getContainer();
+        container.style.cursor = "";
+      } catch (err) {}
     };
 
     mapInstance.on("click", handleMapClick);
+    mapInstance.on("mousemove", handleMouseMove);
+    mapInstance.on("mouseout", handleMouseOut);
 
     return () => {
       mapInstance.off("click", handleMapClick);
+      mapInstance.off("mousemove", handleMouseMove);
+      mapInstance.off("mouseout", handleMouseOut);
+      try {
+        const container = mapInstance.getContainer();
+        container.style.cursor = "";
+      } catch (err) {}
     };
   }, [mapInstance, isEditMode, onMapClick]);
 
@@ -339,6 +405,13 @@ export default function FloodMap({
   return (
     <>
       <div id="flows-leaflet-map" className="w-full h-full z-10" />
+
+      {/* Geofence warning banner */}
+      {isEditMode && !isCursorInside && (
+        <div className="absolute top-16 md:top-20 left-1/2 -translate-x-1/2 z-20 bg-rose-600/90 text-white font-mono text-[9px] md:text-[10px] uppercase tracking-widest px-3 py-2 rounded-[4px] shadow-2xl flex items-center gap-2 animate-bounce border border-rose-500/30 text-center max-w-[85vw] md:max-w-none pointer-events-none">
+          <span>⚠ Evacuation shelter must be placed within Naga City boundaries!</span>
+        </div>
+      )}
 
       {/* Map loading overlay — fades out once Leaflet tiles are ready */}
       <div

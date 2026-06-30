@@ -111,6 +111,7 @@ export default function ManageEvacPage() {
   const [lname, setLname] = useState("");
   const [contactNum, setContactNum] = useState("");
   const [socmedUrl, setSocmedUrl] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
   // Submission state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -176,6 +177,7 @@ export default function ManageEvacPage() {
       setFname(""); setMname(""); setLname(""); setContactNum(""); setSocmedUrl("");
       setSubmitError(null); setSubmitSuccess(false);
       setUpdatingShelterId(null);
+      setErrors({});
     }, 300);
   };
 
@@ -248,22 +250,163 @@ export default function ManageEvacPage() {
 
   // Submit handler — supports both insert and update
   const handleShelterSubmit = async () => {
-    if (!pinnedPosition) return;
+    if (!pinnedPosition) {
+      setSubmitError("Please select a location on the map by placing a pin.");
+      return;
+    }
+
+    const newErrors: Record<string, string> = {};
+
+    // 1. Shelter Name
+    const sName = shelterName.trim();
+    if (!sName) {
+      newErrors.shelterName = "Shelter Name is required.";
+    } else if (sName.length < 3) {
+      newErrors.shelterName = "Shelter Name must be at least 3 characters.";
+    } else if (sName.length > 100) {
+      newErrors.shelterName = "Shelter Name cannot exceed 100 characters.";
+    }
+
+    // 2. Zone / Phase
+    const zNum = zoneNum.trim();
+    if (!zNum) {
+      newErrors.zoneNum = "Zone / Phase is required.";
+    } else {
+      const zoneVal = parseInt(zNum, 10);
+      if (isNaN(zoneVal) || zoneVal <= 0 || zoneVal > 999) {
+        newErrors.zoneNum = "Zone / Phase must be a valid number between 1 and 999.";
+      }
+    }
+
+    // 3. Barangay
+    const bName = barangay.trim();
+    if (!bName) {
+      newErrors.barangay = "Barangay is required.";
+    } else if (bName.length < 3) {
+      newErrors.barangay = "Barangay must be at least 3 characters.";
+    } else if (bName.length > 50) {
+      newErrors.barangay = "Barangay cannot exceed 50 characters.";
+    }
+
+    // 4. Max Capacity
+    const maxCap = maxCapacity.trim();
+    if (!maxCap) {
+      newErrors.maxCapacity = "Max Capacity is required.";
+    } else {
+      const maxCapVal = parseInt(maxCap, 10);
+      if (isNaN(maxCapVal) || maxCapVal <= 0 || maxCapVal > 99999) {
+        newErrors.maxCapacity = "Max Capacity must be between 1 and 99,999.";
+      }
+    }
+
+    // 5. Current Capacity
+    const currCap = currCapacity.trim();
+    const currCapVal = currCap ? parseInt(currCap, 10) : 0;
+    if (currCap) {
+      if (isNaN(currCapVal) || currCapVal < 0 || currCapVal > 99999) {
+        newErrors.currCapacity = "Current Capacity must be between 0 and 99,999.";
+      }
+    }
+
+    // Capacity Logic: Current <= Max
+    if (!newErrors.maxCapacity && !newErrors.currCapacity && maxCap) {
+      const maxCapVal = parseInt(maxCap, 10);
+      if (currCapVal > maxCapVal) {
+        newErrors.currCapacity = "Current occupants cannot exceed maximum capacity.";
+      }
+    }
+
+    // 6. Point Person First Name
+    const firstName = fname.trim();
+    const nameRegex = /^[a-zA-Z\s.\-]+$/;
+    if (!firstName) {
+      newErrors.fname = "First Name is required.";
+    } else if (firstName.length < 2) {
+      newErrors.fname = "First Name must be at least 2 characters.";
+    } else if (firstName.length > 50) {
+      newErrors.fname = "First Name cannot exceed 50 characters.";
+    } else if (!nameRegex.test(firstName)) {
+      newErrors.fname = "First Name must contain only letters, spaces, dots, or hyphens.";
+    }
+
+    // 7. Point Person Middle Name (Optional)
+    const middleName = mname.trim();
+    if (middleName) {
+      if (middleName.length > 50) {
+        newErrors.mname = "Middle Name cannot exceed 50 characters.";
+      } else if (!nameRegex.test(middleName)) {
+        newErrors.mname = "Middle Name must contain only letters, spaces, dots, or hyphens.";
+      }
+    }
+
+    // 8. Point Person Last Name
+    const lastName = lname.trim();
+    if (!lastName) {
+      newErrors.lname = "Last Name is required.";
+    } else if (lastName.length < 2) {
+      newErrors.lname = "Last Name must be at least 2 characters.";
+    } else if (lastName.length > 50) {
+      newErrors.lname = "Last Name cannot exceed 50 characters.";
+    } else if (!nameRegex.test(lastName)) {
+      newErrors.lname = "Last Name must contain only letters, spaces, dots, or hyphens.";
+    }
+
+    // 9. Contact Number
+    const contact = contactNum.trim();
+    const phoneRegex = /^(09|\+639)\d{9}$/;
+    if (!contact) {
+      newErrors.contactNum = "Contact Number is required.";
+    } else if (contact.length < 11 || contact.length > 13) {
+      newErrors.contactNum = "Contact Number must be between 11 and 13 characters.";
+    } else if (!phoneRegex.test(contact)) {
+      newErrors.contactNum = "Contact Number must be a valid PH mobile number (e.g. 09123456789).";
+    }
+
+    // 10. Social Media URL (Optional)
+    const socmed = socmedUrl.trim();
+    if (socmed) {
+      if (socmed.length > 200) {
+        newErrors.socmedUrl = "Social Media URL cannot exceed 200 characters.";
+      } else {
+        try {
+          new URL(socmed);
+        } catch (e) {
+          newErrors.socmedUrl = "Please enter a valid Social Media URL (including http:// or https://).";
+        }
+      }
+    }
+
+    // 11. Geofence check: Naga City bounds
+    const lat = pinnedPosition[0];
+    const lon = pinnedPosition[1];
+    if (lat < 13.5500 || lat > 13.6800 || lon < 123.1400 || lon > 123.2700) {
+      newErrors.geofence = "Shelter location pin must be within the boundaries of Naga City.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      // Set the first error as the main submitError
+      const firstErrorKey = Object.keys(newErrors)[0];
+      setSubmitError(newErrors[firstErrorKey]);
+      return;
+    }
+
+    setErrors({});
     setIsSubmitting(true);
     setSubmitError(null);
 
     const payload = {
-      shelterName,
-      zoneNum,
-      barangay,
+      shelterName: sName,
+      zoneNum: zNum,
+      barangay: bName,
       type: shelterType,
-      maxCapacity,
-      currCapacity,
-      fname,
-      mname,
-      lname,
-      contactNum,
-      socmedUrl,
+      maxCapacity: maxCap,
+      currCapacity: currCap,
+      fname: firstName,
+      mname: middleName,
+      lname: lastName,
+      contactNum: contact,
+      socmedUrl: socmed,
       latitude: pinnedPosition[0],
       longitude: pinnedPosition[1],
     };
@@ -284,6 +427,7 @@ export default function ManageEvacPage() {
       setSubmitError(result.error);
     }
   };
+
 
   const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
   const isProgrammaticScroll = useRef(false);
@@ -566,8 +710,16 @@ export default function ManageEvacPage() {
                         placeholder="e.g. Naga City Sports Complex"
                         value={shelterName}
                         onChange={(e) => setShelterName(e.target.value)}
-                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        maxLength={100}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                          errors.shelterName
+                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                            : "border-border-surface focus:border-primary-blue"
+                        }`}
                       />
+                      {errors.shelterName && (
+                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.shelterName}</span>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -575,11 +727,19 @@ export default function ManageEvacPage() {
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Zone / Phase Number</label>
                         <input
                           type="text"
-                          placeholder="e.g. Zone 1"
+                          placeholder="e.g. 1"
                           value={zoneNum}
                           onChange={(e) => setZoneNum(e.target.value)}
-                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                          maxLength={5}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                            errors.zoneNum
+                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                              : "border-border-surface focus:border-primary-blue"
+                          }`}
                         />
+                        {errors.zoneNum && (
+                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.zoneNum}</span>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Barangay</label>
@@ -588,8 +748,16 @@ export default function ManageEvacPage() {
                           placeholder="e.g. Concepcion Grande"
                           value={barangay}
                           onChange={(e) => setBarangay(e.target.value)}
-                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                          maxLength={50}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                            errors.barangay
+                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                              : "border-border-surface focus:border-primary-blue"
+                          }`}
                         />
+                        {errors.barangay && (
+                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.barangay}</span>
+                        )}
                       </div>
                     </div>
 
@@ -614,8 +782,15 @@ export default function ManageEvacPage() {
                           placeholder="e.g. 200"
                           value={maxCapacity}
                           onChange={(e) => setMaxCapacity(e.target.value)}
-                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${
+                            errors.maxCapacity
+                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                              : "border-border-surface focus:border-primary-blue"
+                          }`}
                         />
+                        {errors.maxCapacity && (
+                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.maxCapacity}</span>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Current Capacity</label>
@@ -625,8 +800,15 @@ export default function ManageEvacPage() {
                           placeholder="e.g. 0"
                           value={currCapacity}
                           onChange={(e) => setCurrCapacity(e.target.value)}
-                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${
+                            errors.currCapacity
+                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                              : "border-border-surface focus:border-primary-blue"
+                          }`}
                         />
+                        {errors.currCapacity && (
+                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.currCapacity}</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -645,8 +827,16 @@ export default function ManageEvacPage() {
                           placeholder="First Name"
                           value={fname}
                           onChange={(e) => setFname(e.target.value)}
-                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                          maxLength={50}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                            errors.fname
+                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                              : "border-border-surface focus:border-primary-blue"
+                          }`}
                         />
+                        {errors.fname && (
+                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.fname}</span>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Middle Name</label>
@@ -655,8 +845,16 @@ export default function ManageEvacPage() {
                           placeholder="Middle Name"
                           value={mname}
                           onChange={(e) => setMname(e.target.value)}
-                          className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                          maxLength={50}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                            errors.mname
+                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                              : "border-border-surface focus:border-primary-blue"
+                          }`}
                         />
+                        {errors.mname && (
+                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.mname}</span>
+                        )}
                       </div>
                     </div>
 
@@ -667,8 +865,16 @@ export default function ManageEvacPage() {
                         placeholder="Last Name"
                         value={lname}
                         onChange={(e) => setLname(e.target.value)}
-                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        maxLength={50}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                          errors.lname
+                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                            : "border-border-surface focus:border-primary-blue"
+                        }`}
                       />
+                      {errors.lname && (
+                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.lname}</span>
+                      )}
                     </div>
 
                     <div className="flex flex-col gap-1">
@@ -678,8 +884,16 @@ export default function ManageEvacPage() {
                         placeholder="e.g. 09123456789"
                         value={contactNum}
                         onChange={(e) => setContactNum(e.target.value)}
-                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        maxLength={13}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                          errors.contactNum
+                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                            : "border-border-surface focus:border-primary-blue"
+                        }`}
                       />
+                      {errors.contactNum && (
+                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.contactNum}</span>
+                      )}
                     </div>
 
                     <div className="flex flex-col gap-1">
@@ -689,8 +903,16 @@ export default function ManageEvacPage() {
                         placeholder="e.g. https://facebook.com/username"
                         value={socmedUrl}
                         onChange={(e) => setSocmedUrl(e.target.value)}
-                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none focus:border-primary-blue"
+                        maxLength={200}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
+                          errors.socmedUrl
+                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
+                            : "border-border-surface focus:border-primary-blue"
+                        }`}
                       />
+                      {errors.socmedUrl && (
+                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.socmedUrl}</span>
+                      )}
                     </div>
                   </div>
                 </div>
