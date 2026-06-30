@@ -130,6 +130,22 @@ export default function ManageEvacPage() {
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
 
+  // Custom modal states for deleting shelters
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
+
+  // Lock scrolling when custom modals are shown
+  useEffect(() => {
+    if (showDeleteModal || deleteErrorMsg) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showDeleteModal, deleteErrorMsg]);
+
   // Clear pinned position when leaving edit mode and form mode is not active
   useEffect(() => {
     if (!isEditMode && !showShelterForm) {
@@ -192,6 +208,11 @@ export default function ManageEvacPage() {
 
   // Open shelter info panel from a pin click
   const openShelterInfo = (pin: ShelterPin) => {
+    // If this shelter is already open, do nothing to prevent it from fading out/vanishing
+    if (selectedShelterPin?.shelter_id === pin.shelter_id && showShelterInfo) {
+      setShelterInfoVisible(true);
+      return;
+    }
     // Close form if open
     if (showShelterForm) closeForm();
     setShelterInfoVisible(false);
@@ -228,14 +249,15 @@ export default function ManageEvacPage() {
     }, 300);
   };
 
-  // Delete shelter handler
-  const handleDeleteShelter = async () => {
-    if (!selectedShelterPin) return;
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${selectedShelterPin.shelter?.shelter_name ?? 'this shelter'}"?\nThis action cannot be undone.`
-    );
-    if (!confirmDelete) return;
+  // Trigger delete modal visibility
+  const handleDeleteShelter = () => {
+    setShowDeleteModal(true);
+  };
 
+  // Perform delete after confirmation inside modal
+  const confirmDeleteShelter = async () => {
+    if (!selectedShelterPin) return;
+    setShowDeleteModal(false);
     setIsSubmitting(true);
     const result = await deleteShelterEntry(selectedShelterPin.shelter_id);
     setIsSubmitting(false);
@@ -244,7 +266,7 @@ export default function ManageEvacPage() {
       closeShelterInfo();
       fetchShelterPins().then(setShelterPins);
     } else {
-      alert(`Error deleting shelter: ${result.error}`);
+      setDeleteErrorMsg(result.error);
     }
   };
 
@@ -1321,6 +1343,7 @@ export default function ManageEvacPage() {
                 defaultStyle="satellite"
                 shelterPins={shelterPins}
                 onPinClick={openShelterInfo}
+                selectedShelterPin={selectedShelterPin}
               />
             </Suspense>
           </div>
@@ -1372,6 +1395,84 @@ export default function ManageEvacPage() {
         </div>
       </button>
 
+      {/* CUSTOM DELETE CONFIRMATION MODAL */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-base/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-bg-mantle border border-border-surface max-w-sm w-full rounded-[8px] p-6 shadow-2xl flex flex-col gap-4 text-text-text animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-rose-500/10 dark:bg-rose-500/20 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-text">
+                Delete Evacuation Shelter
+              </h3>
+            </div>
+
+            {/* Modal Content */}
+            <p className="text-[11px] text-text-subtext leading-relaxed font-sans">
+              Are you sure you want to delete <span className="font-semibold text-text-text">"{selectedShelterPin?.shelter?.shelter_name || "this shelter"}"</span>? This action is permanent, cannot be undone, and will immediately remove all records associated with this shelter.
+            </p>
+
+            {/* Modal Actions */}
+            <div className="flex gap-2.5 mt-2 justify-end">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 border border-border-surface bg-bg-crust hover:bg-bg-crust/85 text-text-subtext hover:text-text-text text-[10px] font-mono font-bold uppercase tracking-wider rounded-[4px] transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteShelter}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 dark:bg-rose-500 dark:hover:bg-rose-400 text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded-[4px] transition-all cursor-pointer"
+              >
+                Delete Shelter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DELETE ERROR MODAL */}
+      {deleteErrorMsg && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-base/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-bg-mantle border border-border-surface max-w-sm w-full rounded-[8px] p-6 shadow-2xl flex flex-col gap-4 text-text-text animate-in fade-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-rose-500/10 dark:bg-rose-500/20 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-text-text">
+                Deletion Failed
+              </h3>
+            </div>
+
+            {/* Modal Content */}
+            <p className="text-[11px] text-text-subtext leading-relaxed font-sans">
+              An error occurred while attempting to delete this shelter:
+              <span className="block mt-1 font-mono text-[10px] text-rose-600 dark:text-[#f38ba8] bg-rose-500/5 dark:bg-[#f38ba8]/5 p-2 rounded-[4px] border border-rose-500/10 dark:border-[#f38ba8]/10">
+                {deleteErrorMsg}
+              </span>
+            </p>
+
+            {/* Modal Actions */}
+            <div className="flex mt-2 justify-end">
+              <button
+                onClick={() => setDeleteErrorMsg(null)}
+                className="px-4 py-2 border border-border-surface bg-bg-crust hover:bg-bg-crust/85 text-text-text text-[10px] font-mono font-bold uppercase tracking-wider rounded-[4px] transition-all cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

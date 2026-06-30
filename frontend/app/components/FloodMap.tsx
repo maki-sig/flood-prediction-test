@@ -54,6 +54,7 @@ interface FloodMapProps {
   defaultStyle?: "dark" | "light" | "satellite";
   shelterPins?: ShelterPin[];
   onPinClick?: (pin: ShelterPin) => void;
+  selectedShelterPin?: ShelterPin | null;
 }
 
 export default function FloodMap({
@@ -67,6 +68,7 @@ export default function FloodMap({
   defaultStyle = "dark",
   shelterPins = [],
   onPinClick,
+  selectedShelterPin,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">(defaultStyle);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
@@ -125,7 +127,7 @@ export default function FloodMap({
 
   // Handle map click events & cursor hover boundary checks in edit mode
   useEffect(() => {
-    if (!mapInstance || !isEditMode || pinnedPosition) {
+    if (!mapInstance || !isEditMode) {
       setIsCursorInside(true);
       if (mapInstance) {
         try {
@@ -149,10 +151,15 @@ export default function FloodMap({
       setIsCursorInside(inside);
       
       const container = mapInstance.getContainer();
-      if (inside) {
-        container.style.cursor = "crosshair";
+      if (pinnedPosition) {
+        // If a pin is already placed, we do not show the stop/block cursor (not-allowed) when hovering outside
+        container.style.cursor = inside ? "crosshair" : "";
       } else {
-        container.style.cursor = "not-allowed";
+        if (inside) {
+          container.style.cursor = "crosshair";
+        } else {
+          container.style.cursor = "not-allowed";
+        }
       }
     };
 
@@ -369,7 +376,7 @@ export default function FloodMap({
     shelterMarkersRef.current.forEach((m) => m.remove());
     shelterMarkersRef.current = [];
 
-    const redIcon = L.icon({
+    const defaultIcon = L.icon({
       iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
       shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
       iconSize: [25, 41],
@@ -378,10 +385,23 @@ export default function FloodMap({
       shadowSize: [41, 41],
     });
 
+    const activeIcon = L.divIcon({
+      html: `<div class="active-pinpoint-wrapper" style="width: 25px; height: 41px; position: relative;">
+               <img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="width: 25px; height: 41px; display: block;" class="active-pinpoint-heartbeat" />
+             </div>`,
+      className: "active-pinpoint-container",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+    });
+
     shelterPins.forEach((pin) => {
       try {
-        const marker = L.marker([pin.latitude, pin.longitude], { icon: redIcon })
-          .addTo(mapInstance);
+        const isActive = selectedShelterPin && selectedShelterPin.shelter_id === pin.shelter_id;
+        const marker = L.marker([pin.latitude, pin.longitude], { 
+          icon: isActive ? activeIcon : defaultIcon 
+        }).addTo(mapInstance);
+        
         if (onPinClick) {
           marker.on("click", () => onPinClick(pin));
         }
@@ -395,7 +415,7 @@ export default function FloodMap({
       shelterMarkersRef.current.forEach((m) => m.remove());
       shelterMarkersRef.current = [];
     };
-  }, [shelterPins, mapInstance, onPinClick]);
+  }, [shelterPins, mapInstance, onPinClick, selectedShelterPin]);
 
   // Observe changes to document class so map updates when ThemeToggle changes theme
   useEffect(() => {
@@ -584,6 +604,27 @@ export default function FloodMap({
           </div>
         </div>
       </div>
+      {/* Active Pin Pulse Heartbeat Styles */}
+      <style>{`
+        @keyframes heartbeat {
+          0% { transform: scale(1) translate3d(0,0,0); }
+          20% { transform: scale(1.15) translate3d(0,0,0); }
+          40% { transform: scale(1) translate3d(0,0,0); }
+          60% { transform: scale(1.15) translate3d(0,0,0); }
+          80% { transform: scale(1) translate3d(0,0,0); }
+          100% { transform: scale(1) translate3d(0,0,0); }
+        }
+        .active-pinpoint-heartbeat {
+          animation: heartbeat 3.2s infinite ease-in-out;
+          transform-origin: bottom center;
+          will-change: transform;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+        }
+        .active-pinpoint-container {
+          z-index: 1000 !important;
+        }
+      `}</style>
     </>
   );
 }

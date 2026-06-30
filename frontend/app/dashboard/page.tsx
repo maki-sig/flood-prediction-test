@@ -122,12 +122,12 @@ export default function Home() {
     fetchShelterPins().then(setShelterPins);
   }, []);
 
-  // Trigger info panel entrance animation when it mounts
+  // Trigger info panel entrance animation when it mounts or updates pin selection
   useEffect(() => {
     if (showShelterInfo) {
       requestAnimationFrame(() => setShelterInfoVisible(true));
     }
-  }, [showShelterInfo]);
+  }, [showShelterInfo, selectedShelterPin?.loc_id]);
 
   // Animated close for shelter info panel
   const closeShelterInfo = () => {
@@ -140,14 +140,14 @@ export default function Home() {
 
   // Open shelter info panel from a pin click
   const openShelterInfo = (pin: ShelterPin) => {
-    // Reset visible so the useEffect always sees false → true transition
+    // If this shelter is already open, do nothing to prevent it from fading out/vanishing
+    if (selectedShelterPin?.shelter_id === pin.shelter_id && showShelterInfo) {
+      setShelterInfoVisible(true);
+      return;
+    }
     setShelterInfoVisible(false);
-    setShowShelterInfo(false);
     setSelectedShelterPin(pin);
-    // Defer mount so state flush happens first
-    requestAnimationFrame(() => {
-      setShowShelterInfo(true);
-    });
+    setShowShelterInfo(true);
   };
 
   const scrollToDashboardSection = (id: string) => {
@@ -420,7 +420,10 @@ export default function Home() {
     }
 
     return (
-      <div className={`flex flex-col gap-4 sidebar-panel ${shelterInfoVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}>
+      <div
+        key={`shelter-info-${selectedShelterPin.loc_id}`}
+        className={`flex flex-col gap-4 sidebar-panel ${shelterInfoVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
+      >
         {/* Header */}
         <div className="flex justify-between items-center border-b border-border-surface pb-2.5 shrink-0">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
@@ -775,6 +778,7 @@ export default function Home() {
                 getProbabilityCategory={getProbabilityCategory}
                 shelterPins={shelterPins}
                 onPinClick={openShelterInfo}
+                selectedShelterPin={selectedShelterPin}
               />
             </Suspense>
           </div>
