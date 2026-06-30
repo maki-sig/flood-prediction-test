@@ -281,12 +281,15 @@ export default function ManageEvacPage() {
 
     // 1. Shelter Name
     const sName = shelterName.trim();
+    const shelterNameRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
     if (!sName) {
       newErrors.shelterName = "Shelter Name is required.";
     } else if (sName.length < 3) {
       newErrors.shelterName = "Shelter Name must be at least 3 characters.";
     } else if (sName.length > 100) {
       newErrors.shelterName = "Shelter Name cannot exceed 100 characters.";
+    } else if (!shelterNameRegex.test(sName)) {
+      newErrors.shelterName = "Shelter Name must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
     }
 
     // 2. Zone / Phase
@@ -302,12 +305,15 @@ export default function ManageEvacPage() {
 
     // 3. Barangay
     const bName = barangay.trim();
+    const barangayRegex = /^[a-zA-Z0-9\s.\-']+$/;
     if (!bName) {
       newErrors.barangay = "Barangay is required.";
     } else if (bName.length < 3) {
       newErrors.barangay = "Barangay must be at least 3 characters.";
     } else if (bName.length > 50) {
       newErrors.barangay = "Barangay cannot exceed 50 characters.";
+    } else if (!barangayRegex.test(bName)) {
+      newErrors.barangay = "Barangay must contain only letters, numbers, spaces, dots, hyphens, or single quotes.";
     }
 
     // 4. Max Capacity
@@ -375,13 +381,13 @@ export default function ManageEvacPage() {
 
     // 9. Contact Number
     const contact = contactNum.trim();
-    const phoneRegex = /^(09|\+639)\d{9}$/;
+    const phoneRegex = /^09\d{9}$/;
     if (!contact) {
       newErrors.contactNum = "Contact Number is required.";
-    } else if (contact.length < 11 || contact.length > 13) {
-      newErrors.contactNum = "Contact Number must be between 11 and 13 characters.";
+    } else if (contact.length !== 11) {
+      newErrors.contactNum = "Contact Number must be 11 characters.";
     } else if (!phoneRegex.test(contact)) {
-      newErrors.contactNum = "Contact Number must be a valid PH mobile number (e.g. 09123456789).";
+      newErrors.contactNum = "Contact Number must start with 09 (e.g. 09123456789).";
     }
 
     // 10. Social Media URL (Optional)
@@ -747,7 +753,7 @@ export default function ManageEvacPage() {
                           type="text"
                           placeholder="e.g. 1"
                           value={zoneNum}
-                          onChange={(e) => setZoneNum(e.target.value)}
+                          onChange={(e) => setZoneNum(e.target.value.replace(/\D/g, ""))}
                           maxLength={5}
                           className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("zoneNum")}`}
                         />
@@ -873,8 +879,8 @@ export default function ManageEvacPage() {
                         type="text"
                         placeholder="e.g. 09123456789"
                         value={contactNum}
-                        onChange={(e) => setContactNum(e.target.value)}
-                        maxLength={13}
+                        onChange={(e) => setContactNum(e.target.value.replace(/\D/g, ""))}
+                        maxLength={11}
                         className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("contactNum")}`}
                       />
                       {errors.contactNum && (

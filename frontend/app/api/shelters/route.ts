@@ -74,16 +74,28 @@ function validatePayload(payload: any): string | null {
   }
 
   // 2. Length limits to prevent spam
-  if (payload.shelterName.trim().length < 3 || payload.shelterName.trim().length > 100) {
+  const sNameVal = payload.shelterName.trim();
+  if (sNameVal.length < 3 || sNameVal.length > 100) {
     return "Shelter Name must be between 3 and 100 characters.";
+  }
+
+  const shelterNameRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
+  if (!shelterNameRegex.test(sNameVal)) {
+    return "Shelter Name must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
   }
 
   if (payload.zoneNum.trim().length > 5) {
     return "Zone / Phase must not exceed 5 characters.";
   }
 
-  if (payload.barangay.trim().length < 3 || payload.barangay.trim().length > 50) {
+  const bNameVal = payload.barangay.trim();
+  if (bNameVal.length < 3 || bNameVal.length > 50) {
     return "Barangay must be between 3 and 50 characters.";
+  }
+
+  const barangayRegex = /^[a-zA-Z0-9\s.\-']+$/;
+  if (!barangayRegex.test(bNameVal)) {
+    return "Barangay must contain only letters, numbers, spaces, dots, hyphens, or single quotes.";
   }
 
   // 3. Format & Value Checks
@@ -136,14 +148,14 @@ function validatePayload(payload: any): string | null {
     return "Last Name must contain only letters, spaces, dots, or hyphens.";
   }
 
-  // PH Mobile Regex: Starts with 09 or +639 followed by 9 digits
+  // PH Mobile Regex: Starts with 09 followed by 9 digits
   const contactVal = (payload.contactNum || "").trim();
-  if (contactVal.length < 11 || contactVal.length > 13) {
-    return "Contact Number must be between 11 and 13 characters.";
+  if (contactVal.length !== 11) {
+    return "Contact Number must be 11 characters.";
   }
-  const phoneRegex = /^(09|\+639)\d{9}$/;
+  const phoneRegex = /^09\d{9}$/;
   if (!phoneRegex.test(contactVal)) {
-    return "Contact Number must be a valid PH mobile number (e.g. 09123456789).";
+    return "Contact Number must start with 09 (e.g. 09123456789).";
   }
 
   // Optional URL check
