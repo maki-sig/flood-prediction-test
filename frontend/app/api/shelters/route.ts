@@ -159,14 +159,11 @@ function validatePayload(payload: any): string | null {
     }
   }
 
-  // Geofence check
+  // Coordinate check
   const lat = payload.latitude;
   const lon = payload.longitude;
   if (lat === undefined || lat === null || isNaN(lat) || lon === undefined || lon === null || isNaN(lon)) {
     return "Latitude and Longitude coordinates are required.";
-  }
-  if (lat < 13.5500 || lat > 13.6800 || lon < 123.1400 || lon > 123.2700) {
-    return "Shelter location pin must be within the boundaries of Naga City.";
   }
 
   return null;

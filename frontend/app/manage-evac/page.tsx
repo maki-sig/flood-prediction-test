@@ -376,18 +376,9 @@ export default function ManageEvacPage() {
       }
     }
 
-    // 11. Geofence check: Naga City bounds
-    const lat = pinnedPosition[0];
-    const lon = pinnedPosition[1];
-    if (lat < 13.5500 || lat > 13.6800 || lon < 123.1400 || lon > 123.2700) {
-      newErrors.geofence = "Shelter location pin must be within the boundaries of Naga City.";
-    }
-
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      // Set the first error as the main submitError
-      const firstErrorKey = Object.keys(newErrors)[0];
-      setSubmitError(newErrors[firstErrorKey]);
+      setSubmitError("Fix some error inputs before saving.");
       return;
     }
 
@@ -591,6 +582,15 @@ export default function ManageEvacPage() {
     return getProbabilityCategory(activeData.summary.peak_probability / 100, currentTheme);
   }, [activeData]);
 
+  const errBorder = (field: string) => {
+    if (!errors[field]) return "border-border-surface focus:border-primary-blue";
+    return appliedTheme === "dark"
+      ? "border-[#f38ba8] focus:border-[#f38ba8]"
+      : "border-[#d20f39] focus:border-[#d20f39]";
+  };
+
+  const errTextClass = appliedTheme === "dark" ? "text-[#f38ba8]" : "text-[#d20f39]";
+
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative">
       <style>{`
@@ -711,14 +711,10 @@ export default function ManageEvacPage() {
                         value={shelterName}
                         onChange={(e) => setShelterName(e.target.value)}
                         maxLength={100}
-                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                          errors.shelterName
-                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                            : "border-border-surface focus:border-primary-blue"
-                        }`}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("shelterName")}`}
                       />
                       {errors.shelterName && (
-                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.shelterName}</span>
+                        <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.shelterName}</span>
                       )}
                     </div>
 
@@ -731,14 +727,10 @@ export default function ManageEvacPage() {
                           value={zoneNum}
                           onChange={(e) => setZoneNum(e.target.value)}
                           maxLength={5}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                            errors.zoneNum
-                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                              : "border-border-surface focus:border-primary-blue"
-                          }`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("zoneNum")}`}
                         />
                         {errors.zoneNum && (
-                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.zoneNum}</span>
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.zoneNum}</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1">
@@ -749,14 +741,10 @@ export default function ManageEvacPage() {
                           value={barangay}
                           onChange={(e) => setBarangay(e.target.value)}
                           maxLength={50}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                            errors.barangay
-                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                              : "border-border-surface focus:border-primary-blue"
-                          }`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("barangay")}`}
                         />
                         {errors.barangay && (
-                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.barangay}</span>
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.barangay}</span>
                         )}
                       </div>
                     </div>
@@ -782,14 +770,10 @@ export default function ManageEvacPage() {
                           placeholder="e.g. 200"
                           value={maxCapacity}
                           onChange={(e) => setMaxCapacity(e.target.value)}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${
-                            errors.maxCapacity
-                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                              : "border-border-surface focus:border-primary-blue"
-                          }`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("maxCapacity")}`}
                         />
                         {errors.maxCapacity && (
-                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.maxCapacity}</span>
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.maxCapacity}</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1">
@@ -800,14 +784,10 @@ export default function ManageEvacPage() {
                           placeholder="e.g. 0"
                           value={currCapacity}
                           onChange={(e) => setCurrCapacity(e.target.value)}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${
-                            errors.currCapacity
-                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                              : "border-border-surface focus:border-primary-blue"
-                          }`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("currCapacity")}`}
                         />
                         {errors.currCapacity && (
-                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.currCapacity}</span>
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.currCapacity}</span>
                         )}
                       </div>
                     </div>
@@ -828,14 +808,10 @@ export default function ManageEvacPage() {
                           value={fname}
                           onChange={(e) => setFname(e.target.value)}
                           maxLength={50}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                            errors.fname
-                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                              : "border-border-surface focus:border-primary-blue"
-                          }`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("fname")}`}
                         />
                         {errors.fname && (
-                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.fname}</span>
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.fname}</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1">
@@ -846,14 +822,10 @@ export default function ManageEvacPage() {
                           value={mname}
                           onChange={(e) => setMname(e.target.value)}
                           maxLength={50}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                            errors.mname
-                              ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                              : "border-border-surface focus:border-primary-blue"
-                          }`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("mname")}`}
                         />
                         {errors.mname && (
-                          <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.mname}</span>
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.mname}</span>
                         )}
                       </div>
                     </div>
@@ -866,14 +838,10 @@ export default function ManageEvacPage() {
                         value={lname}
                         onChange={(e) => setLname(e.target.value)}
                         maxLength={50}
-                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                          errors.lname
-                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                            : "border-border-surface focus:border-primary-blue"
-                        }`}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("lname")}`}
                       />
                       {errors.lname && (
-                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.lname}</span>
+                        <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.lname}</span>
                       )}
                     </div>
 
@@ -885,14 +853,10 @@ export default function ManageEvacPage() {
                         value={contactNum}
                         onChange={(e) => setContactNum(e.target.value)}
                         maxLength={13}
-                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                          errors.contactNum
-                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                            : "border-border-surface focus:border-primary-blue"
-                        }`}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("contactNum")}`}
                       />
                       {errors.contactNum && (
-                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.contactNum}</span>
+                        <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.contactNum}</span>
                       )}
                     </div>
 
@@ -904,14 +868,10 @@ export default function ManageEvacPage() {
                         value={socmedUrl}
                         onChange={(e) => setSocmedUrl(e.target.value)}
                         maxLength={200}
-                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${
-                          errors.socmedUrl
-                            ? "border-[#f38ba8] focus:border-[#f38ba8]"
-                            : "border-border-surface focus:border-primary-blue"
-                        }`}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("socmedUrl")}`}
                       />
                       {errors.socmedUrl && (
-                        <span className="text-[8px] text-[#f38ba8] font-mono mt-0.5">{errors.socmedUrl}</span>
+                        <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.socmedUrl}</span>
                       )}
                     </div>
                   </div>
@@ -920,7 +880,11 @@ export default function ManageEvacPage() {
                 {/* Form Footer */}
                 <div className="border-t border-border-surface pt-4 shrink-0 flex flex-col gap-2">
                   {submitError && (
-                    <p className="text-[9px] font-mono text-[#f38ba8] bg-[#f38ba8]/10 border border-[#f38ba8]/20 rounded-[4px] px-2.5 py-1.5 leading-relaxed">
+                    <p className={`text-[9px] font-mono rounded-[4px] px-2.5 py-1.5 leading-relaxed border ${
+                      appliedTheme === 'dark'
+                        ? 'text-[#f38ba8] bg-[#f38ba8]/10 border-[#f38ba8]/20'
+                        : 'text-[#d20f39] bg-[#d20f39]/10 border-[#d20f39]/20'
+                    }`}>
                       ⚠ {submitError}
                     </p>
                   )}

@@ -125,8 +125,14 @@ export default function FloodMap({
 
   // Handle map click events & cursor hover boundary checks in edit mode
   useEffect(() => {
-    if (!mapInstance || !isEditMode) {
+    if (!mapInstance || !isEditMode || pinnedPosition) {
       setIsCursorInside(true);
+      if (mapInstance) {
+        try {
+          const container = mapInstance.getContainer();
+          container.style.cursor = "";
+        } catch (err) {}
+      }
       return;
     }
 
@@ -171,7 +177,7 @@ export default function FloodMap({
         container.style.cursor = "";
       } catch (err) {}
     };
-  }, [mapInstance, isEditMode, onMapClick]);
+  }, [mapInstance, isEditMode, onMapClick, pinnedPosition]);
 
   // Render or update pinned marker position
   useEffect(() => {
@@ -407,8 +413,8 @@ export default function FloodMap({
       <div id="flows-leaflet-map" className="w-full h-full z-10" />
 
       {/* Geofence warning banner */}
-      {isEditMode && !isCursorInside && (
-        <div className="absolute top-16 md:top-20 left-1/2 -translate-x-1/2 z-20 bg-rose-600/90 text-white font-mono text-[9px] md:text-[10px] uppercase tracking-widest px-3 py-2 rounded-[4px] shadow-2xl flex items-center gap-2 animate-bounce border border-rose-500/30 text-center max-w-[85vw] md:max-w-none pointer-events-none">
+      {isEditMode && !pinnedPosition && !isCursorInside && (
+        <div className="absolute top-16 md:top-20 left-1/2 -translate-x-1/2 z-20 bg-rose-600/90 text-white font-mono text-[9px] md:text-[10px] uppercase tracking-widest px-3 py-2 rounded-[4px] shadow-2xl flex items-center gap-2 border border-rose-500/30 text-center max-w-[85vw] md:max-w-none pointer-events-none">
           <span>⚠ Evacuation shelter must be placed within Naga City boundaries!</span>
         </div>
       )}
