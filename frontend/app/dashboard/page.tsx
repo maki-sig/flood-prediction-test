@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import Footer from "../../components/Footer";
 import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
+import { fetchShelterPins } from "../../lib/evac-actions";
+import type { ShelterPin } from "../../lib/evac-actions";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
@@ -104,12 +106,61 @@ export default function Home() {
   const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
+  const [shelterPins, setShelterPins] = useState<ShelterPin[]>([]);
 
   const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
   const isProgrammaticScroll = useRef(false);
   const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Selected shelter info panel state
+  const [selectedShelterPin, setSelectedShelterPin] = useState<ShelterPin | null>(null);
+  const [showShelterInfo, setShowShelterInfo] = useState(false);
+  const [shelterInfoVisible, setShelterInfoVisible] = useState(false);
+
+  // Fetch saved shelter pins on mount
+  useEffect(() => {
+    fetchShelterPins().then(setShelterPins);
+  }, []);
+
+  // Trigger info panel entrance animation when it mounts or updates pin selection
+  useEffect(() => {
+    if (showShelterInfo) {
+      requestAnimationFrame(() => setShelterInfoVisible(true));
+    }
+  }, [showShelterInfo, selectedShelterPin?.loc_id]);
+
+  // Animated close for shelter info panel
+  const closeShelterInfo = () => {
+    setShelterInfoVisible(false);
+    setTimeout(() => {
+      setShowShelterInfo(false);
+      setSelectedShelterPin(null);
+    }, 300);
+  };
+
+  // Open shelter info panel from a pin click
+  const openShelterInfo = (pin: ShelterPin) => {
+    // If this shelter is already open, do nothing to prevent it from fading out/vanishing
+    if (selectedShelterPin?.shelter_id === pin.shelter_id && showShelterInfo) {
+      setShelterInfoVisible(true);
+      return;
+    }
+    setShelterInfoVisible(false);
+    setSelectedShelterPin(pin);
+    setShowShelterInfo(true);
+  };
+
   const scrollToDashboardSection = (id: string) => {
+    if (id === "overview") {
+      setActiveDashboardSection("overview");
+      isProgrammaticScroll.current = true;
+      if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current);
+      programmaticScrollTimer.current = setTimeout(() => {
+        isProgrammaticScroll.current = false;
+      }, 900);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     const el = document.getElementById(id);
     if (!el) return;
     setActiveDashboardSection(id);
@@ -344,8 +395,158 @@ export default function Home() {
     return getProbabilityCategory(activeData.summary.peak_probability / 100, currentTheme);
   }, [activeData]);
 
+  // Shelter panel renderer â€” extracted from JSX to avoid IIFE parsing issues
+  const renderShelterPanel = () => {
+    if (!showShelterInfo || !selectedShelterPin) return null;
+    const s = selectedShelterPin.shelter;
+    const sh = s?.shelter_head;
+    const pct = s ? Math.round((s.curr_capacity / Math.max(s.max_capacity, 1)) * 100) : 0;
+    const isEvacCenter = s?.type === "Evacuation Center";
+
+    let capacityColor = "bg-emerald-500";
+    let capacityTextColor = "text-emerald-400";
+    let capacityBorderColor = "border-emerald-500/20";
+    let capacityBgClass = "bg-emerald-500/10";
+    if (pct >= 90) {
+      capacityColor = "bg-rose-500";
+      capacityTextColor = "text-rose-400";
+      capacityBorderColor = "border-rose-500/20";
+      capacityBgClass = "bg-rose-500/10";
+    } else if (pct >= 60) {
+      capacityColor = "bg-amber-500";
+      capacityTextColor = "text-amber-400";
+      capacityBorderColor = "border-amber-500/20";
+      capacityBgClass = "bg-amber-500/10";
+    }
+
+    return (
+      <div
+        key={`shelter-info-${selectedShelterPin.loc_id}`}
+        className={`flex flex-col gap-4 sidebar-panel ${shelterInfoVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
+      >
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-border-surface pb-2.5 shrink-0">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            Shelter Information
+          </h2>
+          <button
+            onClick={closeShelterInfo}
+            className="text-[9px] font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex flex-col gap-3">
+          {/* Section 1: Name, type, address, coordinates */}
+          <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3.5 flex justify-between items-end gap-3">
+            <div className="flex flex-col gap-3 min-w-0">
+              <div className="text-sm font-extrabold text-text-text leading-snug tracking-tight truncate" title={s?.shelter_name ?? ""}>
+                {s?.shelter_name ?? "Unnamed Facility"}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-mono text-text-subtext">
+                  {s?.barangay_name ? `Brgy. ${s.barangay_name}, Zone ${s.zone_num ?? "â€”"}` : "â€”"}
+                </span>
+                <span className="text-[8.5px] font-mono text-text-muted">
+                  {selectedShelterPin.latitude.toFixed(5)}Â°, {selectedShelterPin.longitude.toFixed(5)}Â°
+                </span>
+              </div>
+            </div>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[7.5px] font-mono font-bold uppercase tracking-wider border shrink-0 ${isEvacCenter ? "bg-primary-blue-bg text-primary-blue border-primary-blue-border" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"}`}>
+              {s?.type ?? "Unknown"}
+            </span>
+          </div>
+
+          {/* Section 2: Occupancy */}
+          <div className="bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-2 text-center font-mono">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Occupants</span>
+                <span className="text-base font-extrabold text-text-text">{s?.curr_capacity ?? 0}</span>
+                <span className="text-[7px] font-sans font-light text-text-muted">Current Load</span>
+              </div>
+              <div className="flex flex-col gap-0.5 border-l border-border-surface/40">
+                <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Max Load</span>
+                <span className="text-base font-extrabold text-text-subtext">{s?.max_capacity ?? 0}</span>
+                <span className="text-[7px] font-sans font-light text-text-muted">Limit</span>
+              </div>
+            </div>
+            <div className="space-y-1.5 pt-2 border-t border-border-surface/20">
+              <div className="h-1.5 bg-bg-base rounded-full overflow-hidden border border-border-surface/30">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${capacityColor}`}
+                  style={{ width: `${Math.min(pct, 100)}%` }}
+                />
+              </div>
+              <div className="flex justify-between items-center text-[9px] font-mono">
+                <span className="text-text-muted">CAPACITY LOAD</span>
+                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] font-bold border ${capacityTextColor} ${capacityBorderColor} ${capacityBgClass}`}>
+                  {`${pct}% ${pct >= 90 ? "FULL" : pct >= 60 ? "HIGH" : "AVAILABLE"}`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Point Person */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted px-1">Point Person</span>
+            {sh ? (
+              <div className="bg-bg-crust/20 border border-border-surface/40 rounded-[4px] p-3.5 flex flex-col gap-2">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[8px] font-mono text-text-muted uppercase">Full Name</span>
+                  <span className="text-[11px] font-bold text-text-text">
+                    {[sh.fname, sh.mname, sh.lname].filter(Boolean).join(" ")}
+                  </span>
+                </div>
+                <div className="flex gap-4 pt-2 border-t border-border-surface/20 font-mono text-[9px]">
+                  {sh.contact_num && (
+                    <a href={`tel:${sh.contact_num}`} className="text-text-subtext hover:text-primary-blue flex items-center gap-1.5 transition-colors cursor-pointer">
+                      <svg className="w-3 h-3 text-primary-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      <span>{sh.contact_num}</span>
+                    </a>
+                  )}
+                  {sh.socmed_url && (
+                    <a href={sh.socmed_url} target="_blank" rel="noopener noreferrer" className="text-text-subtext hover:text-primary-blue truncate flex items-center gap-1.5 transition-colors cursor-pointer">
+                      <svg className="w-3 h-3 text-primary-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                      </svg>
+                      <span>Profile</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <span className="text-[10px] font-mono text-text-muted italic px-1">No point person on record</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative">
+      <style>{`
+        .sidebar-panel {
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .sidebar-panel-hidden {
+          opacity: 0;
+          transform: translateX(-12px);
+          pointer-events: none;
+        }
+        .sidebar-panel-visible {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      `}</style>
 
       {/* Main content wrapper */}
 
@@ -422,143 +623,136 @@ export default function Home() {
 
           {/* DOCKED SIDEBAR PANEL (Left, height fills map) */}
           <aside className="w-full md:w-[420px] shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans z-20 flows-sidebar">
-            <div className="flex flex-col gap-4">
-              <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                  </svg>
-                  Risk Overview
-                </h2>
-                <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
-              </div>
+            {renderShelterPanel()}
 
-              {activeData && summaryCategory ? (
-                <div className="flex flex-col gap-3">
+            {!showShelterInfo && (
+              <div className="flex flex-col gap-4">
+                <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+                    <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                    Risk Overview
+                  </h2>
+                  <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
+                </div>
 
-                  {/* Timeframe selector tabs */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted">
-                      Forecast Period
-                    </span>
-                    <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
-                      {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
-                        const dateVal = data?.days[period]?.date || "";
-                        const formattedDate = dateVal
-                          ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                          : "";
-                        return (
-                          <button
-                            key={period}
-                            onClick={() => setSelectedPeriod(period)}
-                            className={`py-1.5 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
-                              ? "bg-primary-blue text-white"
-                              : "text-text-subtext hover:bg-border-surface/30 hover:text-text-text"
-                              }`}
-                          >
-                            <span className="leading-none">{period === "dayAfterTomorrow" ? "3RD DAY" : period}</span>
-                            <span className={`text-[7px] leading-none mt-0.5 font-light ${selectedPeriod === period ? "text-white/80" : "text-text-muted"}`}>
-                              {formattedDate}
-                            </span>
-                          </button>
-                        );
-                      })}
+                {activeData && summaryCategory ? (
+                  <div className="flex flex-col gap-3">
+
+                    {/* Timeframe selector tabs */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted">
+                        Forecast Period
+                      </span>
+                      <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
+                        {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
+                          const dateVal = data?.days[period]?.date || "";
+                          const formattedDate = dateVal
+                            ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                            : "";
+                          return (
+                            <button
+                              key={period}
+                              onClick={() => setSelectedPeriod(period)}
+                              className={`py-1.5 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
+                                ? "bg-primary-blue text-white"
+                                : "text-text-subtext hover:bg-border-surface/30 hover:text-text-text"
+                                }`}
+                            >
+                              <span className="leading-none">{period === "dayAfterTomorrow" ? "3RD DAY" : period}</span>
+                              <span className={`text-[7px] leading-none mt-0.5 font-light ${selectedPeriod === period ? "text-white/80" : "text-text-muted"}`}>
+                                {formattedDate}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Hero Risk Classification */}
+                    <div className={`rounded-[4px] border p-4 flex items-center justify-between gap-3 ${summaryCategory.colorClass}`}>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[8px] font-mono font-bold uppercase tracking-widest opacity-70">Overall Assessment</span>
+                        <span className="text-xl font-extrabold font-mono tracking-tight leading-none">{summaryCategory.heroLabel}</span>
+                        <span className="text-[10px] font-light opacity-75 mt-0.5">
+                          Peak: {activeData.summary.peak_probability.toFixed(2)}% at {formatHour(activeData.summary.peak_hour)}
+                        </span>
+                      </div>
+                      {(summaryCategory.label === "Safe" || summaryCategory.label === "Low") ? (
+                        <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Core Risk Metrics */}
+                    <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
+                        <span className={`text-sm md:text-base font-extrabold ${summaryCategory?.textColor || "text-text-text"}`}>
+                          {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                        </span>
+                        <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
+                      </div>
+                      <div className="flex flex-col gap-1 border-l border-border-surface/40">
+                        <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
+                        <span className="text-sm md:text-base font-extrabold text-text-text">
+                          {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
+                        </span>
+                        <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
+                      </div>
+                      <div className="flex flex-col gap-1 border-l border-border-surface/40">
+                        <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
+                        <span className="text-sm md:text-base font-extrabold text-text-subtext">
+                          {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                        </span>
+                        <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
+                      </div>
+                    </div>
+
+                    {/* Advisory text */}
+                    <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 select-text">
+                      <p className="text-[11px] leading-relaxed text-text-subtext">
+                        {activeData.summary.risk_level === "Safe" && "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"}
+                        {activeData.summary.risk_level === "Low" && "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."}
+                        {activeData.summary.risk_level === "Moderate" && "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."}
+                        {activeData.summary.risk_level === "High" && "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."}
+                      </p>
+                    </div>
+
+                    {/* Last Updated */}
+                    <div className="flex gap-1.5 items-center text-[9px] text-text-muted/80 px-1">
+                      <span>Last Updated:</span>
+                      <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
                     </div>
                   </div>
-
-                  {/* Hero Risk Classification — visually dominant */}
-                  <div className={`rounded-[4px] border p-4 flex items-center justify-between gap-3 ${summaryCategory.colorClass}`}>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[8px] font-mono font-bold uppercase tracking-widest opacity-70">Overall Assessment</span>
-                      <span className="text-xl font-extrabold font-mono tracking-tight leading-none">{summaryCategory.heroLabel}</span>
-                      <span className="text-[10px] font-light opacity-75 mt-0.5">
-                        Peak: {activeData.summary.peak_probability.toFixed(2)}% at {formatHour(activeData.summary.peak_hour)}
-                      </span>
-                    </div>
-                    {/* Checkmark for safe/low, warning triangle for moderate/high */}
-                    {(summaryCategory.label === "Safe" || summaryCategory.label === "Low") ? (
-                      <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                ) : (
+                  <div className="py-20 flex flex-col items-center justify-center gap-3">
+                    {loading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
+                        <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
+                      </>
                     ) : (
-                      <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                      </svg>
+                      <>
+                        <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
+                        <button
+                          onClick={() => fetchPrediction()}
+                          className="px-3 py-1.5 bg-bg-crust border border-border-surface hover:bg-border-surface/40 text-text-text text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
+                        >
+                          Connect Sensor
+                        </button>
+                      </>
                     )}
                   </div>
-
-                  {/* Core Risk Metrics — inspector-style panel */}
-                  <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
-                      <span className={`text-sm md:text-base font-extrabold ${summaryCategory?.textColor || 'text-text-text'}`}>
-                        {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
-                      </span>
-                      <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
-                    </div>
-
-                    <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
-                      <span className="text-sm md:text-base font-extrabold text-text-text">
-                        {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
-                      </span>
-                      <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
-                    </div>
-
-                    <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                      <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
-                      <span className="text-sm md:text-base font-extrabold text-text-subtext">
-                        {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
-                      </span>
-                      <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
-                    </div>
-                  </div>
-
-                  {/* Advisory text */}
-                  <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 select-text">
-                    <p className="text-[11px] leading-relaxed text-text-subtext">
-                      {activeData.summary.risk_level === "Safe" && (
-                        "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"
-                      )}
-                      {activeData.summary.risk_level === "Low" && (
-                        "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."
-                      )}
-                      {activeData.summary.risk_level === "Moderate" && (
-                        "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."
-                      )}
-                      {activeData.summary.risk_level === "High" && (
-                        "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Last Updated — subtle */}
-                  <div className="flex gap-1.5 items-center text-[9px] text-text-muted/80 px-1">
-                    <span>Last Updated:</span>
-                    <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="py-20 flex flex-col items-center justify-center gap-3">
-                  {loading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                      <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
-                      <button
-                        onClick={() => fetchPrediction()}
-                        className="px-3 py-1.5 bg-[#11111b] border border-[#313244] hover:bg-[#313244] text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
-                      >
-                        Connect Sensor
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
             {/* Scroll-down indicators inside the floating sidebar */}
             <div className="mt-4 flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
@@ -582,6 +776,9 @@ export default function Home() {
                 theme={appliedTheme}
                 selectedHourDetails={selectedHourDetails}
                 getProbabilityCategory={getProbabilityCategory}
+                shelterPins={shelterPins}
+                onPinClick={openShelterInfo}
+                selectedShelterPin={selectedShelterPin}
               />
             </Suspense>
           </div>

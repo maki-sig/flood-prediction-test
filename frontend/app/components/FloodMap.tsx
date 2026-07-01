@@ -3,6 +3,36 @@
 import React, { useEffect, useState, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import type { ShelterPin } from "../../lib/evac-actions";
+
+const NAGA_POLYGON_COORDS: [number, number][] = [
+  [13.609968789298009, 123.238264647267],
+  [13.603295049815724, 123.18504962357763],
+  [13.625651336134831, 123.17440661883975],
+  [13.647338250079457, 123.19431933738156],
+  [13.662351100172332, 123.25028094293877],
+  [13.67380990980166, 123.28804495293048],
+  [13.670041129846703, 123.29437332892063],
+  [13.674735584354098, 123.30273542780482],
+  [13.674263815340117, 123.32482711860592],
+  [13.654805049817684, 123.37582600721545],
+  [13.650044097448697, 123.31723756354909],
+  [13.609968789298009, 123.238264647267],
+];
+
+function isPointInPolygon(point: [number, number], vs: [number, number][]): boolean {
+  const x = point[0]; // Latitude
+  const y = point[1]; // Longitude
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y))
+        && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 interface HourlyData {
   time: string;
@@ -14,10 +44,17 @@ interface HourlyData {
 }
 
 interface FloodMapProps {
-  data: any; // Using any for simplicity here, matches PredictionResponse from page.tsx
+  data: any;
   theme?: "dark" | "light";
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
+  isEditMode?: boolean;
+  pinnedPosition?: [number, number] | null;
+  onMapClick?: (latlng: [number, number]) => void;
+  defaultStyle?: "dark" | "light" | "satellite";
+  shelterPins?: ShelterPin[];
+  onPinClick?: (pin: ShelterPin) => void;
+  selectedShelterPin?: ShelterPin | null;
 }
 
 export default function FloodMap({
@@ -25,22 +62,162 @@ export default function FloodMap({
   theme,
   selectedHourDetails,
   getProbabilityCategory,
+  isEditMode,
+  pinnedPosition,
+  onMapClick,
+  defaultStyle = "dark",
+  shelterPins = [],
+  onPinClick,
+  selectedShelterPin,
 }: FloodMapProps) {
-  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">("dark");
+  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">(defaultStyle);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
     (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) ? "dark" : "light"
   );
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [isCursorInside, setIsCursorInside] = useState(true);
+
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const shelterMarkersRef = useRef<L.Marker[]>([]);
+
+  // Recalculate map container size and center layout on edit mode toggle
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    // Trigger loading screen overlay during transition
+    setMapReady(false);
+
+    // Invalidate size immediately so Leaflet knows the dimensions changed
+    mapInstance.invalidateSize();
+
+    if (isEditMode) {
+      // Zoom in a bit when entering edit mode
+      mapInstance.flyTo([13.635, 123.25], 14, {
+        animate: true,
+        duration: 0.8,
+      });
+    } else {
+      // Smoothly fly back to fit the bounds of the Naga City polygon when edit mode is cancelled
+      if (polygonRef.current) {
+        mapInstance.flyToBounds(polygonRef.current.getBounds(), {
+          padding: [20, 20],
+          animate: true,
+          duration: 0.8,
+        });
+      }
+    }
+
+    const timer = setTimeout(() => {
+      mapInstance.invalidateSize();
+      if (!isEditMode && polygonRef.current) {
+        mapInstance.fitBounds(polygonRef.current.getBounds(), {
+          padding: [20, 20],
+          animate: true,
+        });
+      }
+      // Hide the loading overlay after transition completes
+      setMapReady(true);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [isEditMode, mapInstance]);
+
+  // Handle map click events & cursor hover boundary checks in edit mode
+  useEffect(() => {
+    if (!mapInstance || !isEditMode) {
+      setIsCursorInside(true);
+      if (mapInstance) {
+        try {
+          const container = mapInstance.getContainer();
+          container.style.cursor = "";
+        } catch (err) {}
+      }
+      return;
+    }
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      const inside = isPointInPolygon([e.latlng.lat, e.latlng.lng], NAGA_POLYGON_COORDS);
+      if (!inside) return; // Block placing pin outside
+      if (onMapClick) {
+        onMapClick([e.latlng.lat, e.latlng.lng]);
+      }
+    };
+
+    const handleMouseMove = (e: L.LeafletMouseEvent) => {
+      const inside = isPointInPolygon([e.latlng.lat, e.latlng.lng], NAGA_POLYGON_COORDS);
+      setIsCursorInside(inside);
+      
+      const container = mapInstance.getContainer();
+      if (pinnedPosition) {
+        // If a pin is already placed, we do not show the stop/block cursor (not-allowed) when hovering outside
+        container.style.cursor = inside ? "crosshair" : "";
+      } else {
+        if (inside) {
+          container.style.cursor = "crosshair";
+        } else {
+          container.style.cursor = "not-allowed";
+        }
+      }
+    };
+
+    const handleMouseOut = () => {
+      setIsCursorInside(true);
+      try {
+        const container = mapInstance.getContainer();
+        container.style.cursor = "";
+      } catch (err) {}
+    };
+
+    mapInstance.on("click", handleMapClick);
+    mapInstance.on("mousemove", handleMouseMove);
+    mapInstance.on("mouseout", handleMouseOut);
+
+    return () => {
+      mapInstance.off("click", handleMapClick);
+      mapInstance.off("mousemove", handleMouseMove);
+      mapInstance.off("mouseout", handleMouseOut);
+      try {
+        const container = mapInstance.getContainer();
+        container.style.cursor = "";
+      } catch (err) {}
+    };
+  }, [mapInstance, isEditMode, onMapClick, pinnedPosition]);
+
+  // Render or update pinned marker position
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    if (markerRef.current) {
+      markerRef.current.remove();
+      markerRef.current = null;
+    }
+
+    if (pinnedPosition) {
+      const redIcon = L.icon({
+        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41],
+      });
+
+      const marker = L.marker(pinnedPosition, { icon: redIcon }).addTo(mapInstance);
+      markerRef.current = marker;
+    }
+  }, [pinnedPosition, mapInstance]);
 
   // Synchronize map style with system theme selection
+  // Note: if defaultStyle is overridden (e.g. satellite), theme changes are ignored
   useEffect(() => {
+    if (defaultStyle === "satellite") return; // Satellite pages always stay satellite
     const t = theme ?? appliedTheme;
     if (t === "light") setMapStyle("light");
     else setMapStyle("dark");
-  }, [theme, appliedTheme]);
+  }, [theme, appliedTheme, defaultStyle]);
 
   // Explicit global bounds clamped to the world to prevent infinite panning
   const worldBounds: L.LatLngBoundsExpression = [
@@ -183,6 +360,63 @@ export default function FloodMap({
     }
   }, [selectedHourDetails, theme, appliedTheme, getProbabilityCategory]);
 
+  // Render shelter pins fetched from the database
+  useEffect(() => {
+    if (!mapInstance || !shelterPins.length) return;
+
+    // Guard: ensure the map container is actually mounted in the DOM
+    try {
+      const container = mapInstance.getContainer();
+      if (!container || !container.isConnected) return;
+    } catch {
+      return;
+    }
+
+    // Clear any previously rendered shelter markers
+    shelterMarkersRef.current.forEach((m) => m.remove());
+    shelterMarkersRef.current = [];
+
+    const defaultIcon = L.icon({
+      iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+    });
+
+    const activeIcon = L.divIcon({
+      html: `<div class="active-pinpoint-wrapper" style="width: 25px; height: 41px; position: relative;">
+               <img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="width: 25px; height: 41px; display: block;" class="active-pinpoint-heartbeat" />
+             </div>`,
+      className: "active-pinpoint-container",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+    });
+
+    shelterPins.forEach((pin) => {
+      try {
+        const isActive = selectedShelterPin && selectedShelterPin.shelter_id === pin.shelter_id;
+        const marker = L.marker([pin.latitude, pin.longitude], { 
+          icon: isActive ? activeIcon : defaultIcon 
+        }).addTo(mapInstance);
+        
+        if (onPinClick) {
+          marker.on("click", () => onPinClick(pin));
+        }
+        shelterMarkersRef.current.push(marker);
+      } catch {
+        // Skip pins that fail to render (e.g. map not ready)
+      }
+    });
+
+    return () => {
+      shelterMarkersRef.current.forEach((m) => m.remove());
+      shelterMarkersRef.current = [];
+    };
+  }, [shelterPins, mapInstance, onPinClick, selectedShelterPin]);
+
   // Observe changes to document class so map updates when ThemeToggle changes theme
   useEffect(() => {
     if (typeof document === "undefined" || theme) return;
@@ -197,6 +431,13 @@ export default function FloodMap({
   return (
     <>
       <div id="flows-leaflet-map" className="w-full h-full z-10" />
+
+      {/* Geofence warning banner */}
+      {isEditMode && !pinnedPosition && !isCursorInside && (
+        <div className="absolute top-16 md:top-20 left-1/2 -translate-x-1/2 z-20 bg-rose-600/90 text-white font-mono text-[9px] md:text-[10px] uppercase tracking-widest px-3 py-2 rounded-[4px] shadow-2xl flex items-center gap-2 border border-rose-500/30 text-center max-w-[85vw] md:max-w-none pointer-events-none">
+          <span>⚠ Evacuation shelter must be placed within Naga City boundaries!</span>
+        </div>
+      )}
 
       {/* Map loading overlay — fades out once Leaflet tiles are ready */}
       <div
@@ -320,11 +561,10 @@ export default function FloodMap({
             <button
               key={style}
               onClick={() => setMapStyle(style)}
-              className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${
-                mapStyle === style
-                  ? "bg-primary-blue border-primary-blue text-white"
-                  : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text"
-              }`}
+              className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${mapStyle === style
+                ? "bg-primary-blue border-primary-blue text-white"
+                : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text"
+                }`}
             >
               {style}
             </button>
@@ -364,6 +604,27 @@ export default function FloodMap({
           </div>
         </div>
       </div>
+      {/* Active Pin Pulse Heartbeat Styles */}
+      <style>{`
+        @keyframes heartbeat {
+          0% { transform: scale(1) translate3d(0,0,0); }
+          20% { transform: scale(1.15) translate3d(0,0,0); }
+          40% { transform: scale(1) translate3d(0,0,0); }
+          60% { transform: scale(1.15) translate3d(0,0,0); }
+          80% { transform: scale(1) translate3d(0,0,0); }
+          100% { transform: scale(1) translate3d(0,0,0); }
+        }
+        .active-pinpoint-heartbeat {
+          animation: heartbeat 3.2s infinite ease-in-out;
+          transform-origin: bottom center;
+          will-change: transform;
+          backface-visibility: hidden;
+          -webkit-backface-visibility: hidden;
+        }
+        .active-pinpoint-container {
+          z-index: 1000 !important;
+        }
+      `}</style>
     </>
   );
 }
