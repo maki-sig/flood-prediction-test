@@ -50,9 +50,146 @@ export async function GET() {
 
 
 
+function validatePayload(payload: any): string | null {
+  if (!payload) {
+    return "Request payload is missing.";
+  }
+
+  // 1. Check required fields are present and are non-empty strings
+  const requiredFields = [
+    { key: "shelterName", label: "Shelter Name" },
+    { key: "zoneNum", label: "Zone / Phase" },
+    { key: "barangay", label: "Barangay" },
+    { key: "maxCapacity", label: "Max Capacity" },
+    { key: "fname", label: "Point Person First Name" },
+    { key: "lname", label: "Point Person Last Name" },
+    { key: "contactNum", label: "Point Person Contact Number" },
+  ];
+
+  for (const field of requiredFields) {
+    const value = payload[field.key];
+    if (value === undefined || value === null || (typeof value === "string" && !value.trim())) {
+      return `${field.label} is required.`;
+    }
+  }
+
+  // 2. Length limits to prevent spam
+  const sNameVal = payload.shelterName.trim();
+  if (sNameVal.length < 3 || sNameVal.length > 100) {
+    return "Shelter Name must be between 3 and 100 characters.";
+  }
+
+  const shelterNameRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
+  if (!shelterNameRegex.test(sNameVal)) {
+    return "Shelter Name must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
+  }
+
+  if (payload.zoneNum.trim().length > 5) {
+    return "Zone / Phase must not exceed 5 characters.";
+  }
+
+  const bNameVal = payload.barangay.trim();
+  if (bNameVal.length < 3 || bNameVal.length > 50) {
+    return "Barangay must be between 3 and 50 characters.";
+  }
+
+  const barangayRegex = /^[a-zA-Z0-9\s.\-']+$/;
+  if (!barangayRegex.test(bNameVal)) {
+    return "Barangay must contain only letters, numbers, spaces, dots, hyphens, or single quotes.";
+  }
+
+  // 3. Format & Value Checks
+  const zoneVal = parseInt(payload.zoneNum, 10);
+  if (isNaN(zoneVal) || zoneVal <= 0 || zoneVal > 999) {
+    return "Zone / Phase must be a valid number between 1 and 999.";
+  }
+
+  const maxCapVal = parseInt(payload.maxCapacity, 10);
+  if (isNaN(maxCapVal) || maxCapVal <= 0 || maxCapVal > 99999) {
+    return "Max Capacity must be a number between 1 and 99,999.";
+  }
+
+  const currCapVal = payload.currCapacity !== undefined && payload.currCapacity !== null && String(payload.currCapacity).trim()
+    ? parseInt(payload.currCapacity, 10)
+    : 0;
+
+  if (isNaN(currCapVal) || currCapVal < 0 || currCapVal > 99999) {
+    return "Current Capacity must be a valid number between 0 and 99,999.";
+  }
+
+  if (currCapVal > maxCapVal) {
+    return "Current capacity cannot exceed maximum capacity.";
+  }
+
+  const fNameVal = (payload.fname || "").trim();
+  if (fNameVal.length < 2 || fNameVal.length > 50) {
+    return "First Name must be between 2 and 50 characters.";
+  }
+
+  const mNameVal = (payload.mname || "").trim();
+  if (mNameVal && mNameVal.length > 50) {
+    return "Middle Name must not exceed 50 characters.";
+  }
+
+  const lNameVal = (payload.lname || "").trim();
+  if (lNameVal.length < 2 || lNameVal.length > 50) {
+    return "Last Name must be between 2 and 50 characters.";
+  }
+
+  // Name Regex: Letters, spaces, hyphens, and periods
+  const nameRegex = /^[a-zA-Z\s.\-]+$/;
+  if (!nameRegex.test(fNameVal)) {
+    return "First Name must contain only letters, spaces, dots, or hyphens.";
+  }
+  if (mNameVal && !nameRegex.test(mNameVal)) {
+    return "Middle Name must contain only letters, spaces, dots, or hyphens.";
+  }
+  if (!nameRegex.test(lNameVal)) {
+    return "Last Name must contain only letters, spaces, dots, or hyphens.";
+  }
+
+  // PH Mobile Regex: Starts with 09 followed by 9 digits
+  const contactVal = (payload.contactNum || "").trim();
+  if (contactVal.length !== 11) {
+    return "Contact Number must be 11 characters.";
+  }
+  const phoneRegex = /^09\d{9}$/;
+  if (!phoneRegex.test(contactVal)) {
+    return "Contact Number must start with 09 (e.g. 09123456789).";
+  }
+
+  // Optional URL check
+  const urlVal = (payload.socmedUrl || "").trim();
+  if (urlVal) {
+    if (urlVal.length > 200) {
+      return "Social Media URL must not exceed 200 characters.";
+    }
+    try {
+      new URL(urlVal);
+    } catch (e) {
+      return "Please enter a valid Social Media URL (including http:// or https://).";
+    }
+  }
+
+  // Coordinate check
+  const lat = payload.latitude;
+  const lon = payload.longitude;
+  if (lat === undefined || lat === null || isNaN(lat) || lon === undefined || lon === null || isNaN(lon)) {
+    return "Latitude and Longitude coordinates are required.";
+  }
+
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
     const payload: ShelterFormPayload = await request.json();
+
+    const validationError = validatePayload(payload);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
 
     // ── Step 1: Insert shelter_head ────────────────────────────────────
     const { data: headRow, error: headError } = await supabase
@@ -137,6 +274,12 @@ export async function PUT(request: Request) {
     if (!shelter_id) {
       return NextResponse.json({ error: "shelter_id is required" }, { status: 400 });
     }
+
+    const validationError = validatePayload(payload);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
+    }
+
 
     // 1. Fetch shelter to get head_id
     const { data: shelterRow, error: fetchError } = await supabase
