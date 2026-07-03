@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import Footer from "../../components/Footer";
 import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 import { createShelterEntry, fetchShelterPins, updateShelterEntry, deleteShelterEntry } from "../../lib/evac-actions";
 import type { ShelterPin } from "../../lib/evac-actions";
 
@@ -94,6 +96,8 @@ const EVAC_SECTIONS = [
 ];
 
 export default function ManageEvacPage() {
+  const router = useRouter();
+  const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [pinnedPosition, setPinnedPosition] = useState<[number, number] | null>(null);
@@ -133,6 +137,34 @@ export default function ManageEvacPage() {
   // Custom modal states for deleting shelters
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteErrorMsg, setDeleteErrorMsg] = useState<string | null>(null);
+
+  // Protect route client-side: verify active session with Supabase
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.push("/login");
+        } else {
+          setAuthLoading(false);
+        }
+      } catch {
+        router.push("/login");
+      }
+    };
+    checkUser();
+
+    // Listen for authentication changes (e.g. logouts or expiry)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        router.push("/login");
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router]);
 
   // Lock scrolling when custom modals are shown
   useEffect(() => {
@@ -619,6 +651,28 @@ export default function ManageEvacPage() {
 
   const errTextClass = appliedTheme === "dark" ? "text-[#f38ba8]" : "text-[#d20f39]";
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col items-center justify-center antialiased flows-root relative">
+        <div className="absolute inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none">
+          <div className="aurora-layer aurora-mask" />
+        </div>
+        <div className="relative z-10 flex flex-col items-center gap-4">
+          <div className="text-xl font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text animate-pulse">
+            FLOWS
+          </div>
+          <div className="flex items-center justify-center gap-2">
+            <svg className="animate-spin h-5 w-5 text-primary-blue" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-xs font-mono text-text-muted uppercase tracking-wider animate-pulse">Verifying Session...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-bg-base text-text-text font-sans flex flex-col antialiased selection:bg-primary-blue-bg selection:text-primary-blue flows-root relative">
       <style>{`
@@ -691,6 +745,17 @@ export default function ManageEvacPage() {
           </div>
 
           <ThemeToggle />
+
+          <button
+            onClick={async () => {
+              await supabase.auth.signOut();
+              router.push("/login");
+            }}
+            title="Sign Out"
+            className="h-7 px-2.5 flex items-center justify-center border border-border-surface bg-bg-crust/50 text-text-muted hover:text-semantic-red hover:border-semantic-red/40 rounded-[4px] cursor-pointer transition-colors duration-200 uppercase tracking-widest font-mono text-[8px] font-bold"
+          >
+            Sign Out
+          </button>
         </div>
       </header>
 
