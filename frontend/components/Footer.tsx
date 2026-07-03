@@ -4,10 +4,7 @@ export default function Footer() {
       <div className="flex flex-col gap-1">
         <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
         <span>
-          Made with ❤️ by Botis, M. (
-          <a href="https://github.com/maki-sig" target="_blank" rel="noopener noreferrer" className="text-primary-blue hover:underline">
-            @maki-sig
-          </a>
+          Made with ❤️ by Sudo.MACT ( Botis, M., Bagasina, T., Danila, A., Padrinao, C.
           )
         </span>
       </div>
