@@ -49,8 +49,8 @@ interface PredictionResponse {
   };
 }
 
-const NAGA_LAT = "13.6192";
-const NAGA_LON = "123.1814";
+const NAGA_LAT = "13.6452";
+const NAGA_LON = "123.1938";
 
 // Probability categorization helper with premium theme semantics
 const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {

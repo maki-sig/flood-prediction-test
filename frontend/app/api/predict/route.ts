@@ -133,8 +133,8 @@ async function syncWithBackend(latitude: string, longitude: string, force: boole
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const latitude = searchParams.get("latitude") || "13.6192";
-    const longitude = searchParams.get("longitude") || "123.1814";
+    const latitude = searchParams.get("latitude") || "13.6452";
+    const longitude = searchParams.get("longitude") || "123.1938";
     const forceUpdate = searchParams.get("update") === "true";
 
     // 1. Resolve exact targets in Asia/Manila timezone

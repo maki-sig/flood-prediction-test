@@ -6,18 +6,23 @@ import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
 
 const NAGA_POLYGON_COORDS: [number, number][] = [
-  [13.609968789298009, 123.238264647267],
-  [13.603295049815724, 123.18504962357763],
-  [13.625651336134831, 123.17440661883975],
-  [13.647338250079457, 123.19431933738156],
-  [13.662351100172332, 123.25028094293877],
-  [13.67380990980166, 123.28804495293048],
-  [13.670041129846703, 123.29437332892063],
-  [13.674735584354098, 123.30273542780482],
-  [13.674263815340117, 123.32482711860592],
-  [13.654805049817684, 123.37582600721545],
-  [13.650044097448697, 123.31723756354909],
-  [13.609968789298009, 123.238264647267],
+  [13.6419785, 123.1934035],
+  [13.6416401, 123.1933278],
+  [13.6416585, 123.1918782],
+  [13.6417219, 123.1915338],
+  [13.6421588, 123.1916475],
+  [13.6422572, 123.1913411],
+  [13.643296, 123.191687],
+  [13.6433786, 123.1912268],
+  [13.6444971, 123.1912708],
+  [13.6457181, 123.1922606],
+  [13.6466449, 123.1925039],
+  [13.6462163, 123.1939949],
+  [13.6460041, 123.194951],
+  [13.6439484, 123.1944416],
+  [13.6443549, 123.1938358],
+  [13.642053, 123.1929932],
+  [13.6419785, 123.1934035],
 ];
 
 function isPointInPolygon(point: [number, number], vs: [number, number][]): boolean {
@@ -95,12 +100,12 @@ export default function FloodMap({
 
     if (isEditMode) {
       // Zoom in a bit when entering edit mode
-      mapInstance.flyTo([13.635, 123.25], 14, {
+      mapInstance.flyTo([13.6441, 123.1931], 16, {
         animate: true,
         duration: 0.8,
       });
     } else {
-      // Smoothly fly back to fit the bounds of the Naga City polygon when edit mode is cancelled
+      // Smoothly fly back to fit the bounds of the target polygon when edit mode is cancelled
       if (polygonRef.current) {
         mapInstance.flyToBounds(polygonRef.current.getBounds(), {
           padding: [20, 20],
@@ -243,26 +248,10 @@ export default function FloodMap({
       maxBounds: worldBounds,
       maxBoundsViscosity: 1.0,
       worldCopyJump: false,
-    }).setView([13.635, 123.25], 13);
+    }).setView([13.6441, 123.1931], 16);
 
     // Dynamic Attribution pinned neatly
     L.control.attribution({ prefix: false }).addTo(map);
-
-    // User's requested city bounds polygon coordinates
-    const polygonCoords: [number, number][] = [
-      [13.609968789298009, 123.238264647267],
-      [13.603295049815724, 123.18504962357763],
-      [13.625651336134831, 123.17440661883975],
-      [13.647338250079457, 123.19431933738156],
-      [13.662351100172332, 123.25028094293877],
-      [13.67380990980166, 123.28804495293048],
-      [13.670041129846703, 123.29437332892063],
-      [13.674735584354098, 123.30273542780482],
-      [13.674263815340117, 123.32482711860592],
-      [13.654805049817684, 123.37582600721545],
-      [13.650044097448697, 123.31723756354909],
-      [13.609968789298009, 123.238264647267],
-    ];
 
     // Determine initial color style
     const t = theme ?? appliedTheme;
@@ -271,7 +260,7 @@ export default function FloodMap({
       t
     );
 
-    const polygon = L.polygon(polygonCoords, {
+    const polygon = L.polygon(NAGA_POLYGON_COORDS, {
       color: category.hex,
       fillColor: category.hex,
       fillOpacity: (theme ?? appliedTheme) === "dark" ? 0.18 : 0.14,
@@ -435,7 +424,7 @@ export default function FloodMap({
       {/* Geofence warning banner */}
       {isEditMode && !pinnedPosition && !isCursorInside && (
         <div className="absolute top-16 md:top-20 left-1/2 -translate-x-1/2 z-20 bg-rose-600/90 text-white font-mono text-[9px] md:text-[10px] uppercase tracking-widest px-3 py-2 rounded-[4px] shadow-2xl flex items-center gap-2 border border-rose-500/30 text-center max-w-[85vw] md:max-w-none pointer-events-none">
-          <span>⚠ Evacuation shelter must be placed within Naga City boundaries!</span>
+          <span>⚠ Evacuation shelter must be placed within target area boundaries!</span>
         </div>
       )}
 

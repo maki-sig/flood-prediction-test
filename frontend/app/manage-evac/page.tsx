@@ -51,8 +51,38 @@ interface PredictionResponse {
   };
 }
 
-const NAGA_LAT = "13.6192";
-const NAGA_LON = "123.1814";
+const NAGA_LAT = "13.6452";
+const NAGA_LON = "123.1938";
+
+const NAGA_BARANGAYS = [
+  "Abella",
+  "Bagumbayan Norte",
+  "Bagumbayan Sur",
+  "Balatas",
+  "Calauag",
+  "Cararayan",
+  "Carolina",
+  "Concepcion Grande",
+  "Concepcion Pequeña",
+  "Dayangdang",
+  "Del Rosario",
+  "Dinaga",
+  "Igualdad Interior",
+  "Lerma",
+  "Liboton",
+  "Mabolo",
+  "Pacol",
+  "Panicuason",
+  "Peñafrancia",
+  "Sabang",
+  "San Felipe",
+  "San Francisco",
+  "San Isidro",
+  "Sta. Cruz",
+  "Tabuco",
+  "Tinago",
+  "Triangulo",
+];
 
 const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   const pct = p * 100;
@@ -337,15 +367,8 @@ export default function ManageEvacPage() {
 
     // 3. Barangay
     const bName = barangay.trim();
-    const barangayRegex = /^[a-zA-Z0-9\s.\-']+$/;
     if (!bName) {
-      newErrors.barangay = "Barangay is required.";
-    } else if (bName.length < 3) {
-      newErrors.barangay = "Barangay must be at least 3 characters.";
-    } else if (bName.length > 50) {
-      newErrors.barangay = "Barangay cannot exceed 50 characters.";
-    } else if (!barangayRegex.test(bName)) {
-      newErrors.barangay = "Barangay must contain only letters, numbers, spaces, dots, hyphens, or single quotes.";
+      newErrors.barangay = "Please select a barangay.";
     }
 
     // 4. Max Capacity
@@ -828,14 +851,18 @@ export default function ManageEvacPage() {
                       </div>
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Barangay</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Concepcion Grande"
+                        <select
                           value={barangay}
                           onChange={(e) => setBarangay(e.target.value)}
-                          maxLength={50}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("barangay")}`}
-                        />
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text focus:outline-none cursor-pointer border-border-surface focus:border-primary-blue ${errBorder("barangay")}`}
+                        >
+                          <option value="" className="bg-bg-crust text-text-muted">Select Barangay...</option>
+                          {NAGA_BARANGAYS.map((b) => (
+                            <option key={b} value={b} className="bg-bg-crust text-text-text">
+                              {b}
+                            </option>
+                          ))}
+                        </select>
                         {errors.barangay && (
                           <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.barangay}</span>
                         )}
