@@ -12,6 +12,10 @@ export interface ShelterFormPayload {
   // Shelter Info
   shelterName: string;
   zoneNum: string;
+  blockNum?: string;
+  lotNum?: string;
+  street?: string;
+  subdivision?: string;
   barangay: string;
   type: string;
   maxCapacity: string;
@@ -45,6 +49,10 @@ export interface ShelterPin {
     type: string;
     barangay_name: string;
     zone_num: number;
+    block?: number | null;
+    lot?: number | null;
+    street?: string | null;
+    subdivision?: string | null;
     max_capacity: number;
     curr_capacity: number;
     shelter_head: {

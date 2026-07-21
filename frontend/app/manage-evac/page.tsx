@@ -125,6 +125,42 @@ const EVAC_SECTIONS = [
   { id: "overview", label: "Overview & Map" },
 ];
 
+const VILLA_POLYGON_COORDS: [number, number][] = [
+  [13.6419785, 123.1934035],
+  [13.6416401, 123.1933278],
+  [13.6416585, 123.1918782],
+  [13.6417219, 123.1915338],
+  [13.6421588, 123.1916475],
+  [13.6422572, 123.1913411],
+  [13.643296, 123.191687],
+  [13.6433786, 123.1912268],
+  [13.6444971, 123.1912708],
+  [13.6457181, 123.1922606],
+  [13.6466449, 123.1925039],
+  [13.6462163, 123.1939949],
+  [13.6460041, 123.194951],
+  [13.6439484, 123.1944416],
+  [13.6443549, 123.1938358],
+  [13.642053, 123.1929932],
+  [13.6419785, 123.1934035],
+];
+
+function isPointInPolygon(point: [number, number], vs: [number, number][]): boolean {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+const capitalizeWords = (val: string) => {
+  return val.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 export default function ManageEvacPage() {
   const router = useRouter();
   const [authLoading, setAuthLoading] = useState(true);
@@ -136,6 +172,10 @@ export default function ManageEvacPage() {
   // Form field state
   const [shelterName, setShelterName] = useState("");
   const [zoneNum, setZoneNum] = useState("");
+  const [blockNum, setBlockNum] = useState("");
+  const [lotNum, setLotNum] = useState("");
+  const [street, setStreet] = useState("");
+  const [subdivision, setSubdivision] = useState("");
   const [barangay, setBarangay] = useState("");
   const [shelterType, setShelterType] = useState("Volunteering Household");
   const [maxCapacity, setMaxCapacity] = useState("");
@@ -250,7 +290,7 @@ export default function ManageEvacPage() {
       setShowShelterForm(false);
       setPinnedPosition(null);
       // Reset all form fields
-      setShelterName(""); setZoneNum(""); setBarangay("");
+      setShelterName(""); setZoneNum(""); setBlockNum(""); setLotNum(""); setStreet(""); setSubdivision(""); setBarangay("");
       setShelterType("Volunteering Household"); setMaxCapacity(""); setCurrCapacity("");
       setFname(""); setMname(""); setLname(""); setContactNum(""); setSocmedUrl("");
       setSubmitError(null); setSubmitSuccess(false);
@@ -267,6 +307,15 @@ export default function ManageEvacPage() {
       setSelectedShelterPin(null);
     }, 300);
   };
+
+  // Handle map click — auto-fill defaults when pin is inside the polygon
+  const handleMapClick = useCallback((latlng: [number, number]) => {
+    setPinnedPosition(latlng);
+    if (isPointInPolygon(latlng, VILLA_POLYGON_COORDS)) {
+      setSubdivision((prev) => prev || "Villa Karangahan");
+      setBarangay((prev) => prev || "San Felipe");
+    }
+  }, []);
 
   // Open shelter info panel from a pin click
   const openShelterInfo = (pin: ShelterPin) => {
@@ -290,6 +339,10 @@ export default function ManageEvacPage() {
 
     setShelterName(s?.shelter_name ?? "");
     setZoneNum(s?.zone_num?.toString() ?? "");
+    setBlockNum(s?.block?.toString() ?? "");
+    setLotNum(s?.lot?.toString() ?? "");
+    setStreet(s?.street ?? "");
+    setSubdivision(s?.subdivision ?? "");
     setBarangay(s?.barangay_name ?? "");
     setShelterType(s?.type ?? "Volunteering Household");
     setMaxCapacity(s?.max_capacity?.toString() ?? "");
@@ -354,6 +407,13 @@ export default function ManageEvacPage() {
       newErrors.shelterName = "Shelter Name must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
     }
 
+    // 1b. Shelter Type
+    if (!shelterType) {
+      newErrors.type = "Shelter Type is required.";
+    } else if (shelterType !== "Volunteering Household" && shelterType !== "Evacuation Center") {
+      newErrors.type = "Invalid Shelter Type selection.";
+    }
+
     // 2. Zone / Phase
     const zNum = zoneNum.trim();
     if (!zNum) {
@@ -365,7 +425,52 @@ export default function ManageEvacPage() {
       }
     }
 
-    // 3. Barangay
+    // 2b. Block Number (optional, 1–100)
+    const bNum = blockNum.trim();
+    if (bNum) {
+      const bVal = parseInt(bNum, 10);
+      if (isNaN(bVal) || bVal < 1 || bVal > 100) {
+        newErrors.blockNum = "Block Number must be between 1 and 100.";
+      }
+    }
+    // 2c. Lot Number (optional, 1–100)
+    const lNum = lotNum.trim();
+    if (lNum) {
+      const lVal = parseInt(lNum, 10);
+      if (isNaN(lVal) || lVal < 1 || lVal > 100) {
+        newErrors.lotNum = "Lot Number must be between 1 and 100.";
+      }
+    }
+
+    // 2d. Street (optional)
+    const streetVal = street.trim();
+    if (streetVal) {
+      if (streetVal.length < 3) {
+        newErrors.street = "Street must be at least 3 characters.";
+      } else if (streetVal.length > 100) {
+        newErrors.street = "Street cannot exceed 100 characters.";
+      } else {
+        const streetRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
+        if (!streetRegex.test(streetVal)) {
+          newErrors.street = "Street must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
+        }
+      }
+    }
+
+    // 2e. Subdivision (optional)
+    const subVal = subdivision.trim();
+    if (subVal) {
+      if (subVal.length < 3) {
+        newErrors.subdivision = "Subdivision must be at least 3 characters.";
+      } else if (subVal.length > 100) {
+        newErrors.subdivision = "Subdivision cannot exceed 100 characters.";
+      } else {
+        const subRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
+        if (!subRegex.test(subVal)) {
+          newErrors.subdivision = "Subdivision must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
+        }
+      }
+    }
     const bName = barangay.trim();
     if (!bName) {
       newErrors.barangay = "Please select a barangay.";
@@ -472,6 +577,10 @@ export default function ManageEvacPage() {
     const payload = {
       shelterName: sName,
       zoneNum: zNum,
+      blockNum: bNum,
+      lotNum: lNum,
+      street: street.trim(),
+      subdivision: subdivision.trim(),
       barangay: bName,
       type: shelterType,
       maxCapacity: maxCap,
@@ -682,7 +791,7 @@ export default function ManageEvacPage() {
         </div>
         <div className="relative z-10 flex flex-col items-center gap-4">
           <div className="text-xl font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text animate-pulse">
-            FLOWS
+            FloodVisor
           </div>
           <div className="flex items-center justify-center gap-2">
             <svg className="animate-spin h-5 w-5 text-primary-blue" fill="none" viewBox="0 0 24 24">
@@ -741,10 +850,7 @@ export default function ManageEvacPage() {
             className="group flex flex-col leading-none shrink-0 cursor-pointer transition-all"
           >
             <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text group-hover:opacity-90 transition-opacity">
-              FLOWS
-            </span>
-            <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
-              Flood Level Observation &amp; Warning System
+              FloodVisor
             </span>
           </Link>
         </div>
@@ -801,7 +907,7 @@ export default function ManageEvacPage() {
                     <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    {updatingShelterId ? "Update Shelter Details - Naga City" : "New Shelter Details - Naga City"}
+                    {updatingShelterId ? "Update Shelter Details - VKS Subd." : "New Shelter Details - VKS Subd."}
                   </h2>
                   <button
                     onClick={closeForm}
@@ -815,17 +921,14 @@ export default function ManageEvacPage() {
                 <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-5 select-text">
                   {/* SECTION 1: SHELTER DETAILS */}
                   <div className="flex flex-col gap-3">
-                    <span className="text-[9px] font-mono font-bold tracking-wider uppercase text-text-muted border-b border-border-surface/40 pb-1 mb-1">
-                      Shelter Information
-                    </span>
 
                     <div className="flex flex-col gap-1">
                       <label className="text-[9px] font-mono text-text-subtext uppercase">Shelter Name</label>
                       <input
                         type="text"
-                        placeholder="e.g. Naga City Sports Complex"
+                        placeholder="e.g. Bahay ni Juan"
                         value={shelterName}
-                        onChange={(e) => setShelterName(e.target.value)}
+                        onChange={(e) => setShelterName(capitalizeWords(e.target.value))}
                         maxLength={100}
                         className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("shelterName")}`}
                       />
@@ -834,19 +937,101 @@ export default function ManageEvacPage() {
                       )}
                     </div>
 
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-mono text-text-subtext uppercase">Shelter Type</label>
+                      <select
+                        value={shelterType}
+                        onChange={(e) => setShelterType(e.target.value)}
+                        className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text focus:outline-none cursor-pointer border-border-surface focus:border-primary-blue ${errBorder("type")}`}
+                      >
+                        <option value="Volunteering Household" className="bg-bg-crust text-text-text">
+                          Volunteering Household
+                        </option>
+                        <option value="Evacuation Center" className="bg-bg-crust text-text-text">
+                          Evacuation Center
+                        </option>
+                      </select>
+                      {errors.type && (
+                        <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.type}</span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Lot Number</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="e.g. 5"
+                          value={lotNum}
+                          onChange={(e) => setLotNum(e.target.value.replace(/\D/g, ""))}
+                          maxLength={3}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("lotNum")}`}
+                        />
+                        {errors.lotNum && (
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.lotNum}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Block Number</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="e.g. 12"
+                          value={blockNum}
+                          onChange={(e) => setBlockNum(e.target.value.replace(/\D/g, ""))}
+                          maxLength={3}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("blockNum")}`}
+                        />
+                        {errors.blockNum && (
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.blockNum}</span>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Zone / Phase Number</label>
                         <input
                           type="text"
+                          inputMode="numeric"
                           placeholder="e.g. 1"
                           value={zoneNum}
                           onChange={(e) => setZoneNum(e.target.value.replace(/\D/g, ""))}
                           maxLength={5}
-                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("zoneNum")}`}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("zoneNum")}`}
                         />
                         {errors.zoneNum && (
                           <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.zoneNum}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Street</label>
+                        <input
+                          type="text"
+                          value={street}
+                          onChange={(e) => setStreet(capitalizeWords(e.target.value))}
+                          maxLength={100}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("street")}`}
+                        />
+                        {errors.street && (
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.street}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[9px] font-mono text-text-subtext uppercase">Subdivision</label>
+                        <input
+                          type="text"
+                          value={subdivision}
+                          onChange={(e) => setSubdivision(capitalizeWords(e.target.value))}
+                          maxLength={100}
+                          className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("subdivision")}`}
+                        />
+                        {errors.subdivision && (
+                          <span className={`text-[8px] font-mono mt-0.5 ${errTextClass}`}>{errors.subdivision}</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1">
@@ -869,27 +1054,16 @@ export default function ManageEvacPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-1">
-                      <label className="text-[9px] font-mono text-text-subtext uppercase">Type</label>
-                      <select
-                        value={shelterType}
-                        onChange={(e) => setShelterType(e.target.value)}
-                        className="bg-bg-crust border border-border-surface rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text focus:outline-none focus:border-primary-blue cursor-pointer"
-                      >
-                        <option value="Volunteering Household">Volunteering Household</option>
-                        <option value="Evacuation Center">Evacuation Center</option>
-                      </select>
-                    </div>
-
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Max Capacity</label>
                         <input
-                          type="number"
-                          min={0}
+                          type="text"
+                          inputMode="numeric"
                           placeholder="e.g. 200"
                           value={maxCapacity}
-                          onChange={(e) => setMaxCapacity(e.target.value)}
+                          onChange={(e) => setMaxCapacity(e.target.value.replace(/\D/g, ""))}
+                          maxLength={5}
                           className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("maxCapacity")}`}
                         />
                         {errors.maxCapacity && (
@@ -899,11 +1073,12 @@ export default function ManageEvacPage() {
                       <div className="flex flex-col gap-1">
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Current Capacity</label>
                         <input
-                          type="number"
-                          min={0}
+                          type="text"
+                          inputMode="numeric"
                           placeholder="e.g. 0"
                           value={currCapacity}
-                          onChange={(e) => setCurrCapacity(e.target.value)}
+                          onChange={(e) => setCurrCapacity(e.target.value.replace(/\D/g, ""))}
+                          maxLength={5}
                           className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] font-mono text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("currCapacity")}`}
                         />
                         {errors.currCapacity && (
@@ -924,9 +1099,9 @@ export default function ManageEvacPage() {
                         <label className="text-[9px] font-mono text-text-subtext uppercase">First Name</label>
                         <input
                           type="text"
-                          placeholder="First Name"
+                          placeholder="Juan"
                           value={fname}
-                          onChange={(e) => setFname(e.target.value)}
+                          onChange={(e) => setFname(capitalizeWords(e.target.value))}
                           maxLength={50}
                           className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("fname")}`}
                         />
@@ -938,9 +1113,8 @@ export default function ManageEvacPage() {
                         <label className="text-[9px] font-mono text-text-subtext uppercase">Middle Name</label>
                         <input
                           type="text"
-                          placeholder="Middle Name"
                           value={mname}
-                          onChange={(e) => setMname(e.target.value)}
+                          onChange={(e) => setMname(capitalizeWords(e.target.value))}
                           maxLength={50}
                           className={`bg-bg-crust border rounded-[4px] px-2.5 py-1.5 text-[11px] text-text-text placeholder:text-text-muted focus:outline-none ${errBorder("mname")}`}
                         />
@@ -954,7 +1128,7 @@ export default function ManageEvacPage() {
                       <label className="text-[9px] font-mono text-text-subtext uppercase">Last Name</label>
                       <input
                         type="text"
-                        placeholder="Last Name"
+                        placeholder="Dela Cruz"
                         value={lname}
                         onChange={(e) => setLname(e.target.value)}
                         maxLength={50}
@@ -1000,11 +1174,10 @@ export default function ManageEvacPage() {
                 {/* Form Footer */}
                 <div className="border-t border-border-surface pt-4 shrink-0 flex flex-col gap-2">
                   {submitError && (
-                    <p className={`text-[9px] font-mono rounded-[4px] px-2.5 py-1.5 leading-relaxed border ${
-                      appliedTheme === 'dark'
-                        ? 'text-[#f38ba8] bg-[#f38ba8]/10 border-[#f38ba8]/20'
-                        : 'text-[#d20f39] bg-[#d20f39]/10 border-[#d20f39]/20'
-                    }`}>
+                    <p className={`text-[9px] font-mono rounded-[4px] px-2.5 py-1.5 leading-relaxed border ${appliedTheme === 'dark'
+                      ? 'text-[#f38ba8] bg-[#f38ba8]/10 border-[#f38ba8]/20'
+                      : 'text-[#d20f39] bg-[#d20f39]/10 border-[#d20f39]/20'
+                      }`}>
                       ⚠ {submitError}
                     </p>
                   )}
@@ -1061,10 +1234,10 @@ export default function ManageEvacPage() {
                 : "PP";
 
               return (
-                 <div
-                   key={`shelter-info-${selectedShelterPin.loc_id}`}
-                   className={`flex flex-col justify-between h-full sidebar-panel ${shelterInfoVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
-                 >
+                <div
+                  key={`shelter-info-${selectedShelterPin.loc_id}`}
+                  className={`flex flex-col justify-between h-full sidebar-panel ${shelterInfoVisible ? "sidebar-panel-visible" : "sidebar-panel-hidden"}`}
+                >
                   <div className="flex flex-col gap-4">
                     {/* Header */}
                     <div className="flex justify-between items-center border-b border-border-surface pb-2.5 shrink-0">
@@ -1084,28 +1257,40 @@ export default function ManageEvacPage() {
 
                     {/* Content Section */}
                     <div className="flex flex-col gap-3">
-                      
+
                       {/* Section 1: Shelter Name, Type, Address, and Coordinates */}
-                      <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3.5 flex justify-between items-end gap-3">
-                        <div className="flex flex-col gap-3 min-w-0">
+                      <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3.5 flex flex-col gap-2.5">
+                        <div className="flex flex-col gap-0.5">
                           <div className="text-sm font-extrabold text-text-text leading-snug tracking-tight truncate" title={s?.shelter_name ?? ""}>
                             {s?.shelter_name ?? "Unnamed Facility"}
                           </div>
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-mono text-text-subtext">
-                              {s?.barangay_name ? `Brgy. ${s.barangay_name}, Zone ${s.zone_num ?? "—"}` : "—"}
-                            </span>
-                            <span className="text-[8.5px] font-mono text-text-muted">
-                              {selectedShelterPin.latitude.toFixed(5)}°, {selectedShelterPin.longitude.toFixed(5)}°
-                            </span>
+                          <div className="text-[10px] font-mono text-text-muted">
+                            {s?.type ?? "Unknown"}
                           </div>
                         </div>
-                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[7.5px] font-mono font-bold uppercase tracking-wider border shrink-0 ${isEvacCenter
-                          ? "bg-primary-blue-bg text-primary-blue border-primary-blue-border"
-                          : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                        }`}>
-                          {s?.type ?? "Unknown"}
-                        </span>
+
+                        <div className="flex flex-col gap-1 pt-2 border-t border-border-surface/40">
+                          <div className="text-[10px] font-sans text-text-subtext leading-normal">
+                            {(() => {
+                              const addressParts = [
+                                [
+                                  s?.block ? `Block ${s.block}` : "",
+                                  s?.lot ? `Lot ${s.lot}` : "",
+                                  s?.zone_num ? `Zone/Phase ${s.zone_num}` : ""
+                                ].filter(Boolean).join(" "),
+                                s?.street,
+                                s?.subdivision,
+                                s?.barangay_name,
+                                "Naga City",
+                                "4400"
+                              ].filter(Boolean);
+                              return addressParts.join(", ");
+                            })()}
+                          </div>
+                          <div className="text-[8.5px] font-mono text-text-muted">
+                            {selectedShelterPin.latitude.toFixed(5)}°, {selectedShelterPin.longitude.toFixed(5)}°
+                          </div>
+                        </div>
                       </div>
 
                       {/* Section 2: Occupancy Dashboard (styled like overall assessment cards) */}
@@ -1152,7 +1337,7 @@ export default function ManageEvacPage() {
                                 {[sh.fname, sh.mname, sh.lname].filter(Boolean).join(" ")}
                               </span>
                             </div>
-                            
+
                             <div className="flex gap-4 pt-2 border-t border-border-surface/20 font-mono text-[9px]">
                               {sh.contact_num && (
                                 <a
@@ -1226,7 +1411,7 @@ export default function ManageEvacPage() {
                       </svg>
                       Risk Overview
                     </h2>
-                    <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
+                    <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">VILLA KARANGAHAN SUBD.</span>
                   </div>
 
                   {activeData && summaryCategory ? (
@@ -1437,7 +1622,7 @@ export default function ManageEvacPage() {
                 getProbabilityCategory={getProbabilityCategory}
                 isEditMode={isEditMode}
                 pinnedPosition={pinnedPosition}
-                onMapClick={setPinnedPosition}
+                onMapClick={handleMapClick}
                 defaultStyle="satellite"
                 shelterPins={shelterPins}
                 onPinClick={openShelterInfo}
@@ -1497,7 +1682,7 @@ export default function ManageEvacPage() {
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-base/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-bg-mantle border border-border-surface max-w-sm w-full rounded-[8px] p-6 shadow-2xl flex flex-col gap-4 text-text-text animate-in fade-in zoom-in-95 duration-200">
-            
+
             {/* Modal Header */}
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-rose-500/10 dark:bg-rose-500/20 flex items-center justify-center shrink-0">
@@ -1538,7 +1723,7 @@ export default function ManageEvacPage() {
       {deleteErrorMsg && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-bg-base/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-bg-mantle border border-border-surface max-w-sm w-full rounded-[8px] p-6 shadow-2xl flex flex-col gap-4 text-text-text animate-in fade-in zoom-in-95 duration-200">
-            
+
             {/* Modal Header */}
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-rose-500/10 dark:bg-rose-500/20 flex items-center justify-center shrink-0">

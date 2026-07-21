@@ -28,6 +28,10 @@ export async function GET() {
         type,
         barangay_name,
         zone_num,
+        block,
+        lot,
+        street,
+        subdivision,
         max_capacity,
         curr_capacity,
         shelter_head (
@@ -102,6 +106,42 @@ function validatePayload(payload: any): string | null {
   const zoneVal = parseInt(payload.zoneNum, 10);
   if (isNaN(zoneVal) || zoneVal <= 0 || zoneVal > 999) {
     return "Zone / Phase must be a valid number between 1 and 999.";
+  }
+
+  if (payload.blockNum && String(payload.blockNum).trim()) {
+    const bVal = parseInt(payload.blockNum, 10);
+    if (isNaN(bVal) || bVal < 1 || bVal > 100) {
+      return "Block Number must be between 1 and 100.";
+    }
+  }
+
+  if (payload.lotNum && String(payload.lotNum).trim()) {
+    const lVal = parseInt(payload.lotNum, 10);
+    if (isNaN(lVal) || lVal < 1 || lVal > 100) {
+      return "Lot Number must be between 1 and 100.";
+    }
+  }
+
+  if (payload.street && String(payload.street).trim()) {
+    const streetVal = String(payload.street).trim();
+    if (streetVal.length < 3 || streetVal.length > 100) {
+      return "Street must be between 3 and 100 characters.";
+    }
+    const streetRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
+    if (!streetRegex.test(streetVal)) {
+      return "Street must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
+    }
+  }
+
+  if (payload.subdivision && String(payload.subdivision).trim()) {
+    const subVal = String(payload.subdivision).trim();
+    if (subVal.length < 3 || subVal.length > 100) {
+      return "Subdivision must be between 3 and 100 characters.";
+    }
+    const subRegex = /^[a-zA-Z0-9\s.,\-'\(\)]+$/;
+    if (!subRegex.test(subVal)) {
+      return "Subdivision must contain only letters, numbers, spaces, dots, commas, hyphens, single quotes, or parentheses.";
+    }
   }
 
   const maxCapVal = parseInt(payload.maxCapacity, 10);
@@ -220,8 +260,12 @@ export async function POST(request: Request) {
       .insert({
         shelter_name: payload.shelterName.trim(),
         zone_num: parseInt(payload.zoneNum, 10),
+        block: payload.blockNum ? parseInt(payload.blockNum, 10) : null,
+        lot: payload.lotNum ? parseInt(payload.lotNum, 10) : null,
+        street: payload.street ? payload.street.trim() : null,
+        subdivision: payload.subdivision ? payload.subdivision.trim() : null,
         barangay_name: payload.barangay.trim(),
-        municipality: "Naga City",
+        municipality: "Villa Karangahan Subd.",
         type: payload.type,
         max_capacity: parseInt(payload.maxCapacity, 10),
         curr_capacity: parseInt(payload.currCapacity, 10),
@@ -319,6 +363,10 @@ export async function PUT(request: Request) {
       .update({
         shelter_name: payload.shelterName.trim(),
         zone_num: parseInt(payload.zoneNum, 10),
+        block: payload.blockNum ? parseInt(payload.blockNum, 10) : null,
+        lot: payload.lotNum ? parseInt(payload.lotNum, 10) : null,
+        street: payload.street ? payload.street.trim() : null,
+        subdivision: payload.subdivision ? payload.subdivision.trim() : null,
         barangay_name: payload.barangay.trim(),
         type: payload.type,
         max_capacity: parseInt(payload.maxCapacity, 10),

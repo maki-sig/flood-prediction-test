@@ -443,23 +443,38 @@ export default function Home() {
         {/* Content */}
         <div className="flex flex-col gap-3">
           {/* Section 1: Name, type, address, coordinates */}
-          <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3.5 flex justify-between items-end gap-3">
-            <div className="flex flex-col gap-3 min-w-0">
+          <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3.5 flex flex-col gap-2.5">
+            <div className="flex flex-col gap-0.5">
               <div className="text-sm font-extrabold text-text-text leading-snug tracking-tight truncate" title={s?.shelter_name ?? ""}>
                 {s?.shelter_name ?? "Unnamed Facility"}
               </div>
-              <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] font-mono text-text-subtext">
-                  {s?.barangay_name ? `Brgy. ${s.barangay_name}, Zone ${s.zone_num ?? "â€”"}` : "â€”"}
-                </span>
-                <span className="text-[8.5px] font-mono text-text-muted">
-                  {selectedShelterPin.latitude.toFixed(5)}Â°, {selectedShelterPin.longitude.toFixed(5)}Â°
-                </span>
+              <div className="text-[10px] font-mono text-text-muted">
+                {s?.type ?? "Unknown"}
               </div>
             </div>
-            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[7.5px] font-mono font-bold uppercase tracking-wider border shrink-0 ${isEvacCenter ? "bg-primary-blue-bg text-primary-blue border-primary-blue-border" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"}`}>
-              {s?.type ?? "Unknown"}
-            </span>
+
+            <div className="flex flex-col gap-1 pt-2 border-t border-border-surface/40">
+              <div className="text-[10px] font-sans text-text-subtext leading-normal">
+                {(() => {
+                  const addressParts = [
+                    [
+                      s?.block ? `B${s.block}` : "",
+                      s?.lot ? `L${s.lot}` : "",
+                      s?.zone_num ? `Zone/Phase${s.zone_num}` : ""
+                    ].filter(Boolean).join(" "),
+                    s?.street,
+                    s?.subdivision,
+                    s?.barangay_name,
+                    "Naga City",
+                    "4400"
+                  ].filter(Boolean);
+                  return addressParts.join(", ");
+                })()}
+              </div>
+              <div className="text-[8.5px] font-mono text-text-muted">
+                {selectedShelterPin.latitude.toFixed(5)}°, {selectedShelterPin.longitude.toFixed(5)}°
+              </div>
+            </div>
           </div>
 
           {/* Section 2: Occupancy */}
@@ -558,10 +573,7 @@ export default function Home() {
             className="group flex flex-col leading-none shrink-0 cursor-pointer transition-all"
           >
             <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text group-hover:opacity-90 transition-opacity">
-              FLOWS
-            </span>
-            <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
-              Flood Level Observation &amp; Warning System
+              FloodVisor
             </span>
           </Link>
         </div>
@@ -634,7 +646,7 @@ export default function Home() {
                     </svg>
                     Risk Overview
                   </h2>
-                  <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">NAGA CITY</span>
+                  <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">VILLA KARANGAHAN SUBD.</span>
                 </div>
 
                 {activeData && summaryCategory ? (

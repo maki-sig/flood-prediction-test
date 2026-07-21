@@ -56,10 +56,7 @@ export default function LoginPage() {
                         className="group flex flex-col leading-none shrink-0 cursor-pointer transition-all"
                     >
                         <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text group-hover:opacity-90 transition-opacity">
-                            FLOWS
-                        </span>
-                        <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
-                            Flood Level Observation &amp; Warning System
+                            FloodVisor
                         </span>
                     </Link>
                 </div>

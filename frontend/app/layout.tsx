@@ -20,9 +20,9 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FLOWS – Flood Level Observation and Warning System",
-  description: "ML-powered flood prediction platform for Naga City, Philippines. Real-time XGBoost probability forecasts, 72-hour telemetry timelines, and interactive cartographic risk maps.",
-  keywords: ["flood prediction", "Naga City", "machine learning", "XGBoost", "Philippines", "disaster preparedness", "FLOWS"],
+  title: "FloodVisor",
+  description: "ML-powered flood prediction platform for Villa Karangahan Subd., Philippines. Real-time XGBoost probability forecasts, 72-hour telemetry timelines, and interactive cartographic risk maps.",
+  keywords: ["flood prediction", "Villa Karangahan Subd.", "machine learning", "XGBoost", "Philippines", "disaster preparedness", "FloodVisor"],
 };
 
 export default function RootLayout({
