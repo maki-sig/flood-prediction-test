@@ -706,21 +706,21 @@ export default function Home() {
                     <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
                       <div className="flex flex-col gap-1">
                         <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
-                        <span className={`text-sm md:text-base font-extrabold ${summaryCategory?.textColor || "text-text-text"}`}>
+                        <span className={`text-sm md:text-base font-semibold ${summaryCategory?.textColor || "text-text-text"}`}>
                           {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
                         </span>
                         <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
                       </div>
                       <div className="flex flex-col gap-1 border-l border-border-surface/40">
                         <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
-                        <span className="text-sm md:text-base font-extrabold text-text-text">
+                        <span className="text-sm md:text-base font-semibold text-text-text">
                           {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
                         </span>
                         <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
                       </div>
                       <div className="flex flex-col gap-1 border-l border-border-surface/40">
                         <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
-                        <span className="text-sm md:text-base font-extrabold text-text-subtext">
+                        <span className="text-sm md:text-base font-semibold text-text-subtext">
                           {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
                         </span>
                         <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
@@ -1028,7 +1028,7 @@ export default function Home() {
                     <span className="hidden sm:inline">Rainfall (1h)</span>
                     <span className="inline sm:hidden">Rain (1h)</span>
                   </span>
-                  <span className="text-sm md:text-base font-extrabold text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                  <span className="text-sm md:text-base font-semibold text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
                   <span className="text-[8px] font-sans font-light text-text-muted">This Hour</span>
                 </div>
 
@@ -1038,7 +1038,7 @@ export default function Home() {
                     <span className="hidden sm:inline">Accumulated Rain (6h)</span>
                     <span className="inline sm:hidden">Accum (6h)</span>
                   </span>
-                  <span className="text-sm md:text-base font-extrabold text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                  <span className="text-sm md:text-base font-semibold text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
                   <span className="text-[8px] font-sans font-light text-text-muted">Past 6h</span>
                 </div>
 
@@ -1048,7 +1048,7 @@ export default function Home() {
                     <span className="hidden sm:inline">Accumulated Rain (24h)</span>
                     <span className="inline sm:hidden">Accum (24h)</span>
                   </span>
-                  <span className="text-sm md:text-base font-extrabold text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                  <span className="text-sm md:text-base font-semibold text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
                   <span className="text-[8px] font-sans font-light text-text-muted">Past 24h</span>
                 </div>
 
