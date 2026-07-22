@@ -13,10 +13,10 @@ export default function Loading() {
         {/* Text Area */}
         <div className="flex flex-col items-center gap-2">
           <h1 className="text-sm md:text-base font-extrabold tracking-widest uppercase bg-gradient-to-r from-[#cba6f7] to-[#89b4fa] text-transparent bg-clip-text">
-            FLOWS
+            FloodVisor
           </h1>
           <span className="text-[10px] md:text-xs font-mono tracking-widest text-[#89b4fa]/80 uppercase animate-pulse">
-            Initializing FLOWS Core Modules...
+            Initializing FloodVisor Core Modules...
           </span>
         </div>
 

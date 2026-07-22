@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -12,17 +12,16 @@ const plusJakartaSans = Plus_Jakarta_Sans({
   display: "swap",
 });
 
-const jetBrainsMono = JetBrains_Mono({
+const geistMono = Geist_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "FLOWS – Flood Level Observation and Warning System",
-  description: "ML-powered flood prediction platform for Naga City, Philippines. Real-time XGBoost probability forecasts, 72-hour telemetry timelines, and interactive cartographic risk maps.",
-  keywords: ["flood prediction", "Naga City", "machine learning", "XGBoost", "Philippines", "disaster preparedness", "FLOWS"],
+  title: "FloodVisor",
+  description: "ML-powered flood prediction platform for Villa Karangahan Subd., Philippines. Real-time XGBoost probability forecasts, 72-hour telemetry timelines, and interactive cartographic risk maps.",
+  keywords: ["flood prediction", "Villa Karangahan Subd.", "machine learning", "XGBoost", "Philippines", "disaster preparedness", "FloodVisor"],
 };
 
 export default function RootLayout({
@@ -31,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={cn("h-full", "antialiased", jetBrainsMono.variable, plusJakartaSans.variable, "font-sans")}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={cn("h-full", "antialiased", geistMono.variable, plusJakartaSans.variable, "font-sans")}>
       <body className="min-h-full flex flex-col">
         <script
           // Initialize theme as early as possible to avoid flash

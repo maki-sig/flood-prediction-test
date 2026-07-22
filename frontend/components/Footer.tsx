@@ -2,7 +2,7 @@ export default function Footer() {
   return (
     <footer className="w-full border-t border-border-surface bg-bg-crust mt-auto py-5 px-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 text-[10px] font-mono text-text-muted uppercase tracking-widest z-20">
       <div className="flex flex-col gap-1">
-        <span>© 2026 FLOWS - Flood Level Observation and Warning System.</span>
+        <span>© 2026 FloodVisor.</span>
         <span>
           Made with ❤️ by Sudo.MACT ( Botis, M., Bagasina, T., Danila, A., Padrinao, C.
           )

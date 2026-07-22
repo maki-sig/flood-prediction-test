@@ -13,7 +13,7 @@ const FEATURES = [
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714a2.25 2.25 0 001.5 2.121m-1.5-2.121c.251.023.501.05.75.082M5 14.5l-1.5 1.5m0 0A2.25 2.25 0 001.5 18v.75M5 14.5l4.5-4.5M19 14.5l1.5 1.5m0 0A2.25 2.25 0 0122.5 18v.75m-3-3.75l-4.5-4.5" />
       </svg>
     ),
-    label: "XGBoost Classifier",
+    label: "GBDT Classifier",
     desc: "Gradient-boosted ensemble of 100 decision trees running binary:logistic inference on rolling rainfall telemetry.",
   },
   {
@@ -32,7 +32,7 @@ const FEATURES = [
       </svg>
     ),
     label: "Cartographic Risk Map",
-    desc: "Leaflet-powered interactive map of Naga City with color-coded flood risk overlays updating per selected hour.",
+    desc: "Leaflet-powered interactive map of Villa Karangahan Subd. with color-coded flood risk overlays updating per selected hour.",
   },
   {
     icon: (
@@ -171,7 +171,7 @@ const STACK = [
     ),
   },
   {
-    name: "XGBoost",
+    name: "GBDT",
     role: "ML Model",
     logo: (
       <svg viewBox="0 0 24 24" className="w-6 h-6 text-[#1396F1] dark:text-[#38bdf8]" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -326,10 +326,7 @@ export default function LandingPage() {
           className="group flex flex-col leading-none shrink-0 cursor-pointer transition-all"
         >
           <span className="text-sm font-extrabold tracking-widest uppercase bg-gradient-to-r from-text-text to-text-subtext text-transparent bg-clip-text group-hover:opacity-90 transition-opacity">
-            FLOWS
-          </span>
-          <span className="hidden sm:block text-[8px] font-mono tracking-wider uppercase text-text-muted">
-            Flood Level Observation &amp; Warning System
+            FloodVisor
           </span>
         </Link>
 
@@ -441,17 +438,17 @@ export default function LandingPage() {
           {/* Badge */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border font-mono text-[9px] uppercase tracking-widest"
             style={{ borderColor: "var(--primary-blue-border)", background: "var(--primary-blue-bg)", color: "var(--primary-blue)" }}>
-            ML-Powered · Naga City, Philippines · Live Hourly
+            ML-Powered · Villa Karangahan Subd., Philippines · Live Hourly
           </div>
 
           {/* Wordmark */}
           <h1 className="text-5xl sm:text-6xl md:text-8xl font-extrabold tracking-tight leading-none bg-gradient-to-br from-text-text via-text-subtext to-primary-blue text-transparent bg-clip-text">
-            FLOWS
+            FloodVisor
           </h1>
 
           <p className="text-base md:text-lg font-light leading-relaxed max-w-xl"
             style={{ color: "var(--text-subtext)" }}>
-            A machine-learning flood prediction dashboard for Naga City — combining real-time Open-Meteo weather data with an XGBoost classifier to deliver hourly flood probability assessments.
+            A machine-learning flood prediction dashboard for Villa Karangahan Subd. (pilot project) — combining real-time Open-Meteo weather data with an GBDT classifier to deliver hourly flood probability assessments.
           </p>
 
           {/* CTA Buttons — stacked on mobile, row on sm+ */}
@@ -501,7 +498,7 @@ export default function LandingPage() {
               Flood risk intelligence, delivered hourly.
             </h2>
             <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
-              FLOWS (Flood Level Observation and Warning System) is an end-to-end predictive analytics platform built for Naga City, Camarines Sur. It ingests live atmospheric telemetry from Open-Meteo, runs an XGBoost gradient-boosted classifier, and surfaces actionable flood probability indices across a 72-hour forecast window.
+              FloodVisor is an end-to-end predictive analytics platform built for Villa Karangahan Subd., Camarines Sur. It ingests live atmospheric telemetry from Open-Meteo, runs an GBDT gradient-boosted classifier, and surfaces actionable flood probability indices across a 72-hour forecast window.
             </p>
             <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
               The system was engineered as a capstone project to bridge academic ML research with real-world disaster preparedness tooling, covering the full pipeline from raw weather API ingestion to an interactive production dashboard.
@@ -512,7 +509,7 @@ export default function LandingPage() {
                 SYSTEM STATUS: ACTIVE BETA
               </div>
               <p className="text-[11px] font-sans font-light tracking-normal normal-case text-text-subtext">
-                FLOWS is currently in its beta phase. Future integrations will include Barangay-level flood forecasting models, enhancing predictive resolution down to individual neighborhood sectors.
+                FloodVisor is currently in its beta phase. Future integrations will include Barangay-level flood forecasting models, enhancing predictive resolution down to individual neighborhood sectors.
               </p>
             </div>
           </div>
@@ -521,7 +518,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 gap-3">
             {[
               { value: "72h", label: "Forecast Window" },
-              { value: "100", label: "XGBoost Trees" },
+              { value: "100", label: "GBDT Trees" },
               { value: "3", label: "Input Features" },
               { value: "4", label: "Risk Tiers" },
             ].map((s) => (
@@ -545,7 +542,7 @@ export default function LandingPage() {
             Core Capabilities
           </span>
           <h2 className="text-2xl md:text-3xl font-extrabold" style={{ color: "var(--text-text)" }}>
-            What powers FLOWS
+            What powers FloodVisor
           </h2>
         </div>
 
@@ -578,7 +575,7 @@ export default function LandingPage() {
               Four-tier probability classification
             </h2>
             <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
-              Every hourly output is bucketed into one of four risk tiers based on the XGBoost probability score. Color-coded badges and map overlays reflect the active tier in real time.
+              Every hourly output is bucketed into one of four risk tiers based on the GBDT probability score. Color-coded badges and map overlays reflect the active tier in real time.
             </p>
           </div>
 
@@ -683,7 +680,7 @@ export default function LandingPage() {
             Ready to check flood risk?
           </h2>
           <p className="text-sm font-light" style={{ color: "var(--text-subtext)" }}>
-            Open the live dashboard to view real-time ML predictions for Naga City powered by the latest Open-Meteo forecast data.
+            Open the live dashboard to view real-time ML predictions for Villa Karangahan Subd. powered by the latest Open-Meteo forecast data.
           </p>
           <Link
             href="/dashboard"
