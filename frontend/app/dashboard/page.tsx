@@ -463,7 +463,7 @@ export default function Home() {
             onClick={closeShelterInfo}
             className="text-[9px] font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer transition-colors"
           >
-            Cancel
+            Close
           </button>
         </div>
 
@@ -540,7 +540,6 @@ export default function Home() {
             {sh ? (
               <div className="bg-bg-crust/20 border border-border-surface/40 rounded-[4px] p-3.5 flex flex-col gap-2">
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[8px] font-mono text-text-muted uppercase">Full Name</span>
                   <span className="text-[11px] font-bold text-text-text">
                     {[sh.fname, sh.mname, sh.lname].filter(Boolean).join(" ")}
                   </span>
@@ -643,8 +642,8 @@ export default function Home() {
                 key={sec.id}
                 onClick={() => scrollToDashboardSection(sec.id)}
                 className={`relative px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer ${activeDashboardSection === sec.id
-                    ? "text-primary-blue"
-                    : "text-text-muted hover:text-text-subtext"
+                  ? "text-primary-blue"
+                  : "text-text-muted hover:text-text-subtext"
                   }`}
               >
                 {sec.label}
