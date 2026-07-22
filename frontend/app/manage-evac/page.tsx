@@ -774,6 +774,19 @@ export default function ManageEvacPage() {
     return getProbabilityCategory(activeData.summary.peak_probability / 100, currentTheme);
   }, [activeData]);
 
+  const peakRainData = useMemo(() => {
+    if (!activeData || !activeData.hourly) return { maxRain: 0, peakHour: 0 };
+    let maxRain = 0;
+    let peakHour = 0;
+    activeData.hourly.forEach((h) => {
+      if (h.rain_intensity_1h >= maxRain) {
+        maxRain = h.rain_intensity_1h;
+        peakHour = h.hour;
+      }
+    });
+    return { maxRain, peakHour };
+  }, [activeData]);
+
   const errBorder = (field: string) => {
     if (!errors[field]) return "border-border-surface focus:border-primary-blue";
     return appliedTheme === "dark"
@@ -1470,19 +1483,19 @@ export default function ManageEvacPage() {
                       {/* Core Risk Metrics */}
                       <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
                         <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
-                          <span className={`text-sm md:text-base font-semibold ${summaryCategory?.textColor || 'text-text-text'}`}>
-                            {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Rain</span>
+                          <span className="text-sm md:text-base font-semibold text-primary-blue">
+                            {peakRainData.maxRain.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm/h</span>
                           </span>
-                          <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">{formatHour(peakRainData.peakHour)} Peak</span>
                         </div>
 
                         <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Daily Total</span>
                           <span className="text-sm md:text-base font-semibold text-text-text">
                             {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
                           </span>
-                          <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">00:00-23:00</span>
                         </div>
 
                         <div className="flex flex-col gap-1 border-l border-border-surface/40">
