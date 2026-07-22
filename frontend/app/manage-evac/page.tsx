@@ -121,8 +121,23 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   }
 };
 
+const getRainIntensityCategory = (intensity: number) => {
+  if (intensity < 0.5) {
+    return { label: "Drizzle", colorClass: "text-text-muted border-border-surface/40 bg-bg-crust/20" };
+  } else if (intensity < 2.5) {
+    return { label: "Light", colorClass: "text-primary-blue border-primary-blue-border bg-primary-blue-bg" };
+  } else if (intensity < 7.5) {
+    return { label: "Moderate", colorClass: "text-semantic-yellow border-semantic-yellow-border bg-semantic-yellow-bg" };
+  } else if (intensity < 15.0) {
+    return { label: "Heavy", colorClass: "text-amber-500 border-amber-500/40 bg-amber-500/10" };
+  } else {
+    return { label: "Torrential", colorClass: "text-semantic-red border-semantic-red-border bg-semantic-red-bg" };
+  }
+};
+
 const EVAC_SECTIONS = [
   { id: "overview", label: "Overview & Map" },
+  { id: "forecast-curve", label: "Forecast Workbench" },
 ];
 
 const VILLA_POLYGON_COORDS: [number, number][] = [
@@ -203,6 +218,11 @@ export default function ManageEvacPage() {
   const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
+
+  // Section navigation state
+  const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
+  const isProgrammaticScroll = useRef(false);
+  const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Custom modal states for deleting shelters
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -612,49 +632,6 @@ export default function ManageEvacPage() {
   };
 
 
-  const [activeDashboardSection, setActiveDashboardSection] = useState("overview");
-  const isProgrammaticScroll = useRef(false);
-  const programmaticScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const scrollToDashboardSection = (id: string) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    setActiveDashboardSection(id);
-    isProgrammaticScroll.current = true;
-    if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current);
-    programmaticScrollTimer.current = setTimeout(() => {
-      isProgrammaticScroll.current = false;
-    }, 900);
-    const subNav = document.getElementById("sub-nav");
-    const isMobile = window.innerWidth < 768;
-    const offset = isMobile ? 12 : (subNav ? subNav.getBoundingClientRect().height : 48);
-    const top = el.getBoundingClientRect().top + window.scrollY - offset - 12;
-    window.scrollTo({ top, behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    const sectionIds = ["overview"];
-    const detect = () => {
-      if (isProgrammaticScroll.current) return;
-      const subNav = document.getElementById("sub-nav");
-      const isMobile = window.innerWidth < 768;
-      const offset = isMobile ? 12 : (subNav ? subNav.getBoundingClientRect().height : 48);
-      const detectionY = offset + 24;
-      let current = sectionIds[0];
-      for (const id of sectionIds) {
-        const el = document.getElementById(id);
-        if (!el) continue;
-        if (el.getBoundingClientRect().top <= detectionY) {
-          current = id;
-        }
-      }
-      setActiveDashboardSection(current);
-    };
-    window.addEventListener("scroll", detect, { passive: true });
-    detect();
-    return () => window.removeEventListener("scroll", detect);
-  }, []);
-
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const el = document.documentElement;
@@ -774,6 +751,107 @@ export default function ManageEvacPage() {
     return getProbabilityCategory(activeData.summary.peak_probability / 100, currentTheme);
   }, [activeData]);
 
+  const peakRainData = useMemo(() => {
+    if (!activeData || !activeData.hourly) return { maxRain: 0, peakHour: 0 };
+    let maxRain = 0;
+    let peakHour = 0;
+    activeData.hourly.forEach((h) => {
+      if (h.rain_intensity_1h >= maxRain) {
+        maxRain = h.rain_intensity_1h;
+        peakHour = h.hour;
+      }
+    });
+    return { maxRain, peakHour };
+  }, [activeData]);
+
+  // Selected hour category
+  const selectedHourCategory = useMemo(() => {
+    if (!selectedHourDetails) return null;
+    const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+    return getProbabilityCategory(selectedHourDetails.probability, currentTheme);
+  }, [selectedHourDetails]);
+
+  // SVG Chart Dimensions and Math
+  const chartHeight = 220;
+  const chartWidth = 720;
+  const paddingLeft = 45;
+  const paddingRight = 45;
+  const paddingTop = 20;
+  const paddingBottom = 30;
+
+  // Max precipitation value for Y-axis scaling (minimum ceiling of 10 mm/h)
+  const maxPrecip = useMemo(() => {
+    if (!activeData || !activeData.hourly) return 10.0;
+    const maxVal = Math.max(...activeData.hourly.map(h => h.rain_intensity_1h));
+    return Math.max(maxVal * 1.1, 10.0);
+  }, [activeData]);
+
+  const chartPoints = useMemo(() => {
+    if (!activeData || !activeData.hourly) return null;
+    const hourly = activeData.hourly;
+
+    const xStride = (chartWidth - paddingLeft - paddingRight) / 23;
+
+    return hourly.map((h, i) => {
+      const x = paddingLeft + i * xStride;
+      const yPrecip = chartHeight - paddingBottom - (h.rain_intensity_1h / maxPrecip) * (chartHeight - paddingTop - paddingBottom);
+      const yProb = chartHeight - paddingBottom - (h.probability / 1.0) * (chartHeight - paddingTop - paddingBottom);
+
+      return { x, yPrecip, yProb, ...h };
+    });
+  }, [activeData, maxPrecip]);
+
+  // Scroll to a specific section by ID
+  const scrollToDashboardSection = (id: string) => {
+    if (id === "overview") {
+      setActiveDashboardSection("overview");
+      isProgrammaticScroll.current = true;
+      if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current);
+      programmaticScrollTimer.current = setTimeout(() => {
+        isProgrammaticScroll.current = false;
+      }, 900);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    const el = document.getElementById(id);
+    if (!el) return;
+    setActiveDashboardSection(id);
+    isProgrammaticScroll.current = true;
+    if (programmaticScrollTimer.current) clearTimeout(programmaticScrollTimer.current);
+    programmaticScrollTimer.current = setTimeout(() => {
+      isProgrammaticScroll.current = false;
+    }, 900);
+    const subNav = document.getElementById("sub-nav");
+    const isMobile = window.innerWidth < 768;
+    const offset = isMobile ? 12 : (subNav ? subNav.getBoundingClientRect().height : 48);
+    const top = el.getBoundingClientRect().top + window.scrollY - offset - 12;
+    window.scrollTo({ top, behavior: "smooth" });
+  };
+
+  // Detect active section on scroll
+  useEffect(() => {
+    const sectionIds = EVAC_SECTIONS.map(s => s.id);
+    const detect = () => {
+      if (isProgrammaticScroll.current) return;
+      const subNav = document.getElementById("sub-nav");
+      const isMobile = window.innerWidth < 768;
+      const offset = isMobile ? 12 : (subNav ? subNav.getBoundingClientRect().height : 48);
+      const detectionY = offset + 24;
+      let current = sectionIds[0];
+      for (const id of sectionIds) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= detectionY) {
+          current = id;
+        }
+      }
+      setActiveDashboardSection(current);
+    };
+    window.addEventListener("scroll", detect, { passive: true });
+    detect();
+    return () => window.removeEventListener("scroll", detect);
+  }, []);
+
   const errBorder = (field: string) => {
     if (!errors[field]) return "border-border-surface focus:border-primary-blue";
     return appliedTheme === "dark"
@@ -888,11 +966,35 @@ export default function ManageEvacPage() {
         </div>
       </header>
 
+      {/* Sticky Sub-navigation */}
+      <div id="sub-nav" className="sticky top-0 z-40 w-full border-b border-border-surface bg-bg-base/90 backdrop-blur-md transition-all hidden md:block">
+        <div
+          className="max-w-7xl mx-auto px-4 md:px-6 py-2.5 flex items-center justify-center gap-4 overflow-x-auto"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {EVAC_SECTIONS.map((sec) => (
+            <button
+              key={sec.id}
+              onClick={() => scrollToDashboardSection(sec.id)}
+              className={`relative px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer ${activeDashboardSection === sec.id
+                ? "text-primary-blue"
+                : "text-text-muted hover:text-text-subtext"
+                }`}
+            >
+              {sec.label}
+              {activeDashboardSection === sec.id && (
+                <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-3 h-[2px] rounded-full bg-primary-blue" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Main Workspace Layout */}
       <div className="flex flex-col w-full z-10">
 
         {/* SECTION: Docked Split Viewport — Sidebar Analytics (Left) + Map (Right) */}
-        <section id="overview" className="relative w-full h-auto md:h-[calc(100vh-50px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
+        <section id="overview" className="relative w-full h-auto md:h-[calc(100vh-110px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
           {/* DOCKED SIDEBAR PANEL */}
           <aside className="shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans z-20 flows-sidebar flows-sidebar-custom">
             {showShelterForm ? (
@@ -1251,7 +1353,7 @@ export default function ManageEvacPage() {
                         onClick={closeShelterInfo}
                         className="text-[9px] font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer transition-colors"
                       >
-                        Cancel
+                        Close
                       </button>
                     </div>
 
@@ -1287,9 +1389,9 @@ export default function ManageEvacPage() {
                               return addressParts.join(", ");
                             })()}
                           </div>
-                          <div className="text-[8.5px] font-mono text-text-muted">
+                          {/* <div className="text-[8.5px] font-mono text-text-muted">
                             {selectedShelterPin.latitude.toFixed(5)}°, {selectedShelterPin.longitude.toFixed(5)}°
-                          </div>
+                          </div> */}
                         </div>
                       </div>
 
@@ -1332,7 +1434,6 @@ export default function ManageEvacPage() {
                         {sh ? (
                           <div className="bg-bg-crust/20 border border-border-surface/40 rounded-[4px] p-3.5 flex flex-col gap-2">
                             <div className="flex flex-col gap-0.5">
-                              <span className="text-[8px] font-mono text-text-muted uppercase">Full Name</span>
                               <span className="text-[11px] font-bold text-text-text">
                                 {[sh.fname, sh.mname, sh.lname].filter(Boolean).join(" ")}
                               </span>
@@ -1470,19 +1571,19 @@ export default function ManageEvacPage() {
                       {/* Core Risk Metrics */}
                       <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
                         <div className="flex flex-col gap-1">
-                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Risk</span>
-                          <span className={`text-sm md:text-base font-semibold ${summaryCategory?.textColor || 'text-text-text'}`}>
-                            {activeData.summary.peak_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Rain</span>
+                          <span className="text-sm md:text-base font-semibold text-primary-blue">
+                            {peakRainData.maxRain.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm/h</span>
                           </span>
-                          <span className="text-[8px] font-sans font-light text-text-muted">Highest Hour</span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">{formatHour(peakRainData.peakHour)} Peak</span>
                         </div>
 
                         <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Rainfall</span>
+                          <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Daily Total</span>
                           <span className="text-sm md:text-base font-semibold text-text-text">
                             {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
                           </span>
-                          <span className="text-[8px] font-sans font-light text-text-muted">24h Total</span>
+                          <span className="text-[8px] font-sans font-light text-text-muted">00:00-23:00</span>
                         </div>
 
                         <div className="flex flex-col gap-1 border-l border-border-surface/40">
@@ -1633,6 +1734,409 @@ export default function ManageEvacPage() {
 
         </section>
 
+        {/* SECTION 2: 24h Forecast Workbench (Chart 8 cols + Inspector 4 cols side-by-side, Log Table below) */}
+        {activeData && chartPoints && selectedHourDetails && selectedHourCategory && (
+          <section id="forecast-curve" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-8 flex flex-col gap-6 z-10 pb-16">
+
+            {/* Top Row: Dual 12-Column Grid (Chart + Inspector) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+
+              {/* Chart Card (Left, 8 cols) */}
+              <div className="lg:col-span-8 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col justify-between gap-4 flows-card">
+                <div className="flex justify-between items-center flex-wrap gap-4 pb-1">
+                  <div>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                      </svg>
+                      24-Hour Forecast Curve
+                    </h2>
+                    <p className="text-[10px] font-light text-text-muted mt-0.5">
+                      <span className="hidden sm:inline">Hover across coordinates to evaluate index factors at targeted timelines</span>
+                      <span className="inline sm:hidden">Tap points to view hour predictions</span>
+                    </p>
+                  </div>
+
+                  {/* Chart Legend */}
+                  <div className="flex gap-4 font-mono text-[9px] text-text-subtext uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-none bg-primary-blue inline-block" />
+                      Rain Intensity (mm/h)
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-none bg-[#f38ba8] inline-block" />
+                      Flood Probability (%)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Interactive SVG Chart */}
+                <div className="relative w-full overflow-x-auto select-none pt-2">
+                  <svg
+                    viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                    className="w-full h-auto overflow-visible min-w-[640px] md:min-w-[700px]"
+                  >
+                    {/* Gridlines */}
+                    {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
+                      const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
+                      return (
+                        <g key={ratio} className="opacity-[0.12] flows-gridline">
+                          <line
+                            x1={paddingLeft}
+                            y1={y}
+                            x2={chartWidth - paddingRight}
+                            y2={y}
+                            stroke="var(--border-surface)"
+                            strokeWidth={0.5}
+                            strokeDasharray="2 2"
+                          />
+                        </g>
+                      );
+                    })}
+
+                    {/* Left Y-Axis Labels (Rain Intensity mm/h) */}
+                    {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
+                      const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
+                      const value = (1.0 - ratio) * maxPrecip;
+                      return (
+                        <text
+                          key={`y-left-${ratio}`}
+                          x={paddingLeft - 8}
+                          y={y + 3}
+                          className="text-[10px] md:text-[7.5px] font-mono fill-primary-blue flows-chart-text-left"
+                          textAnchor="end"
+                        >
+                          {value.toFixed(2)}
+                        </text>
+                      );
+                    })}
+
+                    {/* Right Y-Axis Labels (Flood Probability %) */}
+                    {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {
+                      const y = paddingTop + ratio * (chartHeight - paddingTop - paddingBottom);
+                      const value = Math.round((1.0 - ratio) * 100);
+                      return (
+                        <text
+                          key={`y-right-${ratio}`}
+                          x={chartWidth - paddingRight + 8}
+                          y={y + 3}
+                          className="text-[10px] md:text-[7.5px] font-mono fill-[#f38ba8] flows-chart-text-right"
+                          textAnchor="start"
+                        >
+                          {value}%
+                        </text>
+                      );
+                    })}
+
+                    {/* X Axis labels (Hours) */}
+                    {chartPoints.map((pt) => {
+                      return (
+                        <text
+                          key={pt.hour}
+                          x={pt.x}
+                          y={chartHeight - 8}
+                          className={`text-[9.5px] md:text-[6.2px] font-mono font-light tracking-tighter fill-text-subtext flows-chart-text ${pt.hour % 3 === 0 ? "" : "hidden md:block"
+                            }`}
+                          textAnchor="middle"
+                        >
+                          {pt.hour === 0 ? "12 AM" : pt.hour === 12 ? "12 PM" : `${pt.hour % 12}${pt.hour >= 12 ? " PM" : " AM"}`}
+                        </text>
+                      );
+                    })}
+
+                    {/* Rain Intensity (Sky Blue Area) */}
+                    <path
+                      d={`
+                        M ${chartPoints[0].x} ${chartHeight - paddingBottom}
+                        ${chartPoints.map(pt => `L ${pt.x} ${pt.yPrecip}`).join(" ")}
+                        L ${chartPoints[chartPoints.length - 1].x} ${chartHeight - paddingBottom}
+                        Z
+                      `}
+                      fill="url(#cyan-gradient)"
+                      className="opacity-[0.08]"
+                    />
+                    <path
+                      d={chartPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.yPrecip}`).join(" ")}
+                      fill="none"
+                      stroke={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"}
+                      strokeWidth={1.5}
+                      strokeLinecap="square"
+                    />
+
+                    {/* Flood Probability (Red/Rose Area) */}
+                    <path
+                      d={`
+                        M ${chartPoints[0].x} ${chartHeight - paddingBottom}
+                        ${chartPoints.map(pt => `L ${pt.x} ${pt.yProb}`).join(" ")}
+                        L ${chartPoints[chartPoints.length - 1].x} ${chartHeight - paddingBottom}
+                        Z
+                      `}
+                      fill="url(#rose-gradient)"
+                      className="opacity-[0.06]"
+                    />
+                    <path
+                      d={chartPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.yProb}`).join(" ")}
+                      fill="none"
+                      stroke="#f38ba8"
+                      strokeWidth={1.5}
+                      strokeLinecap="square"
+                    />
+
+                    {/* Interactivity columns overlay */}
+                    {chartPoints.map((pt) => {
+                      const xStride = (chartWidth - paddingLeft - paddingRight) / 23;
+                      const xStart = pt.x - xStride / 2;
+                      return (
+                        <rect
+                          key={pt.hour}
+                          x={xStart}
+                          y={paddingTop}
+                          width={xStride}
+                          height={chartHeight - paddingTop - paddingBottom}
+                          fill="transparent"
+                          className="cursor-pointer hover:fill-primary-blue-bg"
+                          onMouseEnter={() => setSelectedHourIdx(pt.hour)}
+                          onClick={() => setSelectedHourIdx(pt.hour)}
+                        />
+                      );
+                    })}
+
+                    {/* Cursor indicators */}
+                    {(() => {
+                      const activePt = chartPoints.find(pt => pt.hour === selectedHourIdx);
+                      if (!activePt) return null;
+                      return (
+                        <g className="pointer-events-none">
+                          <line
+                            x1={activePt.x}
+                            y1={paddingTop}
+                            x2={activePt.x}
+                            y2={chartHeight - paddingBottom}
+                            stroke="#585b70"
+                            strokeWidth={1}
+                            strokeDasharray="2 2"
+                          />
+                          <rect x={activePt.x - 3.5} y={activePt.yPrecip - 3.5} width={7} height={7} fill={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"} stroke="#ffffff" strokeWidth={1} />
+                          <rect x={activePt.x - 3.5} y={activePt.yProb - 3.5} width={7} height={7} fill="#f38ba8" stroke="#ffffff" strokeWidth={1} />
+                        </g>
+                      );
+                    })()}
+
+                    {/* Gradients */}
+                    <defs>
+                      <linearGradient id="cyan-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"} />
+                        <stop offset="100%" stopColor={appliedTheme === 'dark' ? "#3b82f6" : "#2563eb"} stopOpacity="0" />
+                      </linearGradient>
+                      <linearGradient id="rose-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f38ba8" />
+                        <stop offset="100%" stopColor="#f38ba8" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+              </div>
+
+              {/* Live Hour Inspector Card (Right, 4 cols) */}
+              <div className="lg:col-span-4 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col justify-between gap-4 flows-card">
+                <div>
+                  <div className="flex justify-between items-center pb-3 border-b border-border-surface/40 mb-3">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
+                      <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      {formatHour(selectedHourDetails.hour)}
+                    </h3>
+                    <span className={`font-mono text-[9px] border text-center px-2 py-0.5 rounded-[2px] uppercase ${selectedHourCategory.colorClass}`}>
+                      {selectedHourCategory.label}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5">
+                    {/* Rain 1h */}
+                    <div className="bg-bg-crust/30 border border-border-surface/40 rounded-[4px] p-3 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono font-bold text-text-muted uppercase tracking-wider block">Rainfall (1h)</span>
+                        <span className="text-[9px] font-sans font-light text-text-muted">Rate / Intensity</span>
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm/h</span></span>
+                        {(() => {
+                          const rainCat = getRainIntensityCategory(selectedHourDetails.rain_intensity_1h);
+                          return (
+                            <span className={`text-[7.5px] font-mono border px-1.5 py-0.2 rounded-[2px] uppercase font-bold ${rainCat.colorClass}`}>
+                              {rainCat.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* 6h Accum */}
+                    <div className="bg-bg-crust/30 border border-border-surface/40 rounded-[4px] p-3 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono font-bold text-text-muted uppercase tracking-wider block">6h Rolling Accum</span>
+                        <span className="text-[9px] font-sans font-light text-text-muted">Soil Saturation</span>
+                      </div>
+                      <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                    </div>
+
+                    {/* 24h Accum */}
+                    <div className="bg-bg-crust/30 border border-border-surface/40 rounded-[4px] p-3 flex justify-between items-center">
+                      <div>
+                        <span className="text-[8px] font-mono font-bold text-text-muted uppercase tracking-wider block">24h Rolling Accum</span>
+                        <span className="text-[9px] font-sans font-light text-text-muted">Ground Load</span>
+                      </div>
+                      <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flood Probability Summary Box */}
+                <div className="mt-3 flex justify-between items-center bg-bg-crust/60 rounded-[4px] p-3 border border-border-surface flows-subbox">
+                  <div>
+                    <p className="text-[9px] font-mono font-bold text-text-muted uppercase tracking-widest">Flood Probability</p>
+                    <p className="text-[9px] font-sans font-light text-text-subtext">Model inference output</p>
+                  </div>
+                  <span className="text-base font-mono font-bold text-text-text">{(selectedHourDetails.probability * 100).toFixed(2)}%</span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Bottom Row: Detailed Telemetry Log Table */}
+            <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col justify-between flows-card">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-4 flex items-center gap-2">
+                  <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Detailed 24-Hour Telemetry Log
+                </h3>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block max-h-[350px] overflow-y-auto overflow-x-auto pr-1 border border-border-surface bg-bg-crust/20 rounded-[4px] flows-subbox">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-border-surface text-text-muted font-mono text-[9px] uppercase tracking-wider bg-bg-mantle sticky top-0 z-10 flows-header">
+                        <th className="py-2.5 px-3">Time</th>
+                        <th className="py-2.5 px-3">Rain (1h)</th>
+                        <th className="py-2.5 px-3">6h Rolling Accum</th>
+                        <th className="py-2.5 px-3">24h Rolling Accum</th>
+                        <th className="py-2.5 px-3 text-center">Flood Probability</th>
+                        <th className="py-2.5 px-3 text-center md:text-right">Risk Level</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono text-[11px]">
+                      {activeData.hourly.map((h) => {
+                        const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+                        const hrCat = getProbabilityCategory(h.probability, currentTheme);
+                        const rainCat = getRainIntensityCategory(h.rain_intensity_1h);
+                        return (
+                          <tr
+                            key={h.hour}
+                            id={`hour-row-${h.hour}`}
+                            onMouseEnter={() => setSelectedHourIdx(h.hour)}
+                            className={`border-b border-border-surface/40 transition-colors cursor-pointer flows-tablerow ${selectedHourIdx === h.hour
+                              ? "bg-border-surface/40 text-text-text"
+                              : "hover:bg-border-surface/15 text-text-subtext"
+                              }`}
+                          >
+                            <td className="py-2.5 px-3 font-semibold">{formatHour(h.hour)}</td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-1.5">
+                                <span>{h.rain_intensity_1h.toFixed(2)} mm/h</span>
+                                <span className={`text-[7px] font-mono border px-1 py-0.2 rounded-[2px] uppercase font-bold ${rainCat.colorClass}`}>
+                                  {rainCat.label}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-text-muted">{h.rain_accum_6h.toFixed(2)} mm</td>
+                            <td className="py-2.5 px-3 text-text-muted">{h.rain_accum_24h.toFixed(2)} mm</td>
+                            <td className="py-2.5 px-3 text-center font-bold text-text-text">
+                              {(h.probability * 100).toFixed(2)}%
+                            </td>
+                            <td className="py-2.5 px-3 text-center md:text-right">
+                              <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[10px] font-bold border ${hrCat.colorClass}`}>
+                                {hrCat.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Cards View */}
+                <div className="block md:hidden w-full">
+                  <div
+                    className="flex overflow-x-auto gap-3 pb-3 snap-x scrollbar-thin scrollbar-thumb-rounded"
+                    style={{ scrollbarWidth: 'thin' }}
+                  >
+                    {activeData.hourly.map((h) => {
+                      const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+                      const hrCat = getProbabilityCategory(h.probability, currentTheme);
+                      const isSelected = selectedHourIdx === h.hour;
+                      return (
+                        <div
+                          key={h.hour}
+                          id={`hour-card-${h.hour}`}
+                          onClick={() => setSelectedHourIdx(h.hour)}
+                          className={`w-64 shrink-0 p-4 rounded-[6px] border snap-start cursor-pointer transition-all flex flex-col justify-between h-44 ${isSelected
+                            ? "border-primary-blue bg-primary-blue-bg/20"
+                            : "border-border-surface bg-bg-mantle/40 hover:border-border-surface/80"
+                            }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono text-xs font-bold text-text-text">
+                              {formatHour(h.hour)}
+                            </span>
+                            <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[8px] font-bold border ${hrCat.colorClass}`}>
+                              {hrCat.label}
+                            </span>
+                          </div>
+
+                          <div className="my-2">
+                            <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest block">
+                              Probability
+                            </span>
+                            <span className="text-lg font-mono font-black text-text-text">
+                              {(h.probability * 100).toFixed(2)}%
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1.5 border-t border-border-surface/40 pt-2 font-mono text-[9px]">
+                            <div>
+                              <span className="text-text-muted block font-sans">Rain (1h)</span>
+                              <span className="font-bold text-text-text">{h.rain_intensity_1h.toFixed(2)} mm/h</span>
+                            </div>
+                            <div>
+                              <span className="text-text-muted block font-sans">Accum (6h)</span>
+                              <span className="font-bold text-text-subtext">{h.rain_accum_6h.toFixed(2)} mm</span>
+                            </div>
+                            <div>
+                              <span className="text-text-muted block font-sans">Accum (24h)</span>
+                              <span className="font-bold text-text-subtext">{h.rain_accum_24h.toFixed(2)} mm</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="mt-3 font-mono text-[9px] text-text-muted uppercase tracking-wider">
+                *Select timelines to evaluate rolling sensors in depth
+              </div>
+            </div>
+
+          </section>
+        )}
+
       </div>
 
       {/* Footer */}
@@ -1656,7 +2160,12 @@ export default function ManageEvacPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
               )}
-              <span className="text-[8px] tracking-tight">{sec.label.split(" ")[0]}</span>
+              {sec.id === "forecast-curve" && (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                </svg>
+              )}
+              <span className="text-[8px] tracking-tight">{sec.id === "forecast-curve" ? "Workbench" : sec.label.split(" ")[0]}</span>
             </button>
           );
         })}

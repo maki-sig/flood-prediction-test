@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
@@ -44,7 +44,7 @@ interface FloodMapProps {
   isEditMode?: boolean;
   pinnedPosition?: [number, number] | null;
   onMapClick?: (latlng: [number, number]) => void;
-  defaultStyle?: "dark" | "light" | "satellite";
+  defaultStyle?: "theme" | "satellite";
   shelterPins?: ShelterPin[];
   onPinClick?: (pin: ShelterPin) => void;
   selectedShelterPin?: ShelterPin | null;
@@ -58,12 +58,12 @@ export default function FloodMap({
   isEditMode,
   pinnedPosition,
   onMapClick,
-  defaultStyle = "dark",
+  defaultStyle = "theme",
   shelterPins = [],
   onPinClick,
   selectedShelterPin,
 }: FloodMapProps) {
-  const [mapStyle, setMapStyle] = useState<"dark" | "light" | "satellite">(defaultStyle);
+  const [mapStyle, setMapStyle] = useState<"theme" | "satellite">(defaultStyle);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
     (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) ? "dark" : "light"
   );
@@ -176,14 +176,12 @@ export default function FloodMap({
     }
   }, [pinnedPosition, mapInstance]);
 
-  // Synchronize map style with system theme selection
-  // Note: if defaultStyle is overridden (e.g. satellite), theme changes are ignored
-  useEffect(() => {
-    if (defaultStyle === "satellite") return; // Satellite pages always stay satellite
-    const t = theme ?? appliedTheme;
-    if (t === "light") setMapStyle("light");
-    else setMapStyle("dark");
-  }, [theme, appliedTheme, defaultStyle]);
+  // Compute effective tile style based on mapStyle selection ("theme" vs "satellite")
+  const effectiveTileStyle = useMemo(() => {
+    if (mapStyle === "satellite") return "satellite";
+    const currentTheme = theme ?? appliedTheme;
+    return currentTheme === "light" ? "light" : "dark";
+  }, [mapStyle, theme, appliedTheme]);
 
   // Explicit global bounds clamped to the world to prevent infinite panning
   const worldBounds: L.LatLngBoundsExpression = [
@@ -249,7 +247,7 @@ export default function FloodMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, theme, appliedTheme]);
 
-  // Dynamically swap the active tile layer based on mapStyle selection
+  // Dynamically swap the active tile layer based on effectiveTileStyle selection
   useEffect(() => {
     if (!mapInstance || !(mapInstance as any)._container) return;
 
@@ -265,10 +263,10 @@ export default function FloodMap({
     let url = "";
     let attrib = "";
 
-    if (mapStyle === "dark") {
+    if (effectiveTileStyle === "dark") {
       url = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
       attrib = "&copy; CARTO";
-    } else if (mapStyle === "light") {
+    } else if (effectiveTileStyle === "light") {
       url = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
       attrib = "&copy; CARTO";
     } else {
@@ -291,7 +289,7 @@ export default function FloodMap({
       // Map instance is likely unmounted or mid-destruction
       console.warn("Leaflet error adding layer to map:", e);
     }
-  }, [mapStyle, mapInstance]);
+  }, [effectiveTileStyle, mapInstance]);
 
   // Dynamically update polygon color styles on selected hour or theme change
   useEffect(() => {
@@ -502,7 +500,7 @@ export default function FloodMap({
           <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-wider mr-0.5 md:mr-1">
             STYLE:
           </span>
-          {(["dark", "light", "satellite"] as const).map((style) => (
+          {(["theme", "satellite"] as const).map((style) => (
             <button
               key={style}
               onClick={() => setMapStyle(style)}
