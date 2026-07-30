@@ -7,6 +7,7 @@ import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
 import { fetchShelterPins } from "../../lib/evac-actions";
 import type { ShelterPin } from "../../lib/evac-actions";
+import type { ShelterRouteCandidate } from "../../lib/route-planner";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
@@ -128,11 +129,76 @@ export default function Home() {
   const [selectedShelterPin, setSelectedShelterPin] = useState<ShelterPin | null>(null);
   const [showShelterInfo, setShowShelterInfo] = useState(false);
   const [shelterInfoVisible, setShelterInfoVisible] = useState(false);
+  const [routeStart, setRouteStart] = useState<[number, number] | null>(null);
+  const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
+  const [pinnedPosition, setPinnedPosition] = useState<[number, number] | null>(null);
+  const [activeRoute, setActiveRoute] = useState<ShelterRouteCandidate | null>(null);
+  const [routeSummary, setRouteSummary] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [findingRoute, setFindingRoute] = useState(false);
+  const [showRecommendMenu, setShowRecommendMenu] = useState(false);
+  const [isPinningLocation, setIsPinningLocation] = useState(false);
+  const [locationStatusMessage, setLocationStatusMessage] = useState<string | null>(null);
 
   // Fetch saved shelter pins on mount
   useEffect(() => {
     fetchShelterPins().then(setShelterPins);
   }, []);
+
+  const applyPinnedLocation = useCallback((location: [number, number], message: string) => {
+    setPinnedPosition(location);
+    setCurrentLocation(location);
+    setRouteStart(location);
+    setShowRecommendMenu(false);
+    setIsPinningLocation(false);
+    setLocationStatusMessage(message);
+  }, []);
+
+  const handleUseCurrentLocation = useCallback(() => {
+    setFindingRoute(true);
+    setLocationStatusMessage("Requesting your location...");
+
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setFindingRoute(false);
+      setLocationStatusMessage("Geolocation is not supported in this browser.");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextLocation: [number, number] = [position.coords.latitude, position.coords.longitude];
+        applyPinnedLocation(nextLocation, "Current location pinned. Finding the nearest shelter...");
+        setFindingRoute(false);
+      },
+      (error) => {
+        const message = error.code === 1
+          ? "Location permission was denied. Please allow location access to pin your current position."
+          : error.code === 2
+            ? "Your location could not be determined right now. Please try again."
+            : error.code === 3
+              ? "Location request timed out. Please try again."
+              : "Unable to retrieve your location right now.";
+        setFindingRoute(false);
+        setLocationStatusMessage(message);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }, [applyPinnedLocation]);
+
+  const handleMapClick = useCallback((latlng: [number, number]) => {
+    applyPinnedLocation(latlng, "Location pinned. Finding the nearest shelter...");
+  }, [applyPinnedLocation]);
+
+  const recommendFromPinnedMap = useCallback(() => {
+    setShowRecommendMenu(false);
+    setIsPinningLocation(true);
+    setLocationStatusMessage("Tap the map to place your location pin.");
+  }, []);
+
+  const recommendFromCurrentLocation = useCallback(() => {
+    handleUseCurrentLocation();
+    setShowRecommendMenu(false);
+  }, [handleUseCurrentLocation]);
 
   // Trigger info panel entrance animation when it mounts or updates pin selection
   useEffect(() => {
@@ -808,14 +874,75 @@ export default function Home() {
                 <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
               </div>
             }>
+              <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
+                <div className="pointer-events-auto flex w-[min(92vw,320px)] flex-col items-center gap-2 rounded-[6px] border border-border-surface bg-bg-mantle/90 px-3 py-3 shadow-2xl backdrop-blur-sm">
+                  <button
+                    onClick={() => setShowRecommendMenu((value) => !value)}
+                    style={{ borderColor: "rgba(245, 158, 11, 0.4)", backgroundColor: "var(--bg-mantle)", color: "#f59e0b" }}
+                    className="w-full px-3 py-2 rounded-[4px] border text-[10px] font-mono uppercase tracking-wider transition-colors"
+                  >
+                    {findingRoute ? "Finding shelter..." : "Recommend Shelter"}
+                  </button>
+                  {showRecommendMenu && (
+                    <div className="flex flex-col gap-2 w-full">
+                      <button
+                        onClick={recommendFromPinnedMap}
+                        className="px-3 py-2 rounded-[4px] border border-border-surface bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-text-text transition-colors"
+                      >
+                        Pin on Map
+                      </button>
+                      <button
+                        onClick={recommendFromCurrentLocation}
+                        className="px-3 py-2 rounded-[4px] border border-primary-blue/30 bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-primary-blue transition-colors"
+                      >
+                        Use My Current Location
+                      </button>
+                    </div>
+                  )}
+                  {locationStatusMessage && (
+                    <div className="w-full rounded-[4px] border border-border-surface bg-bg-crust/70 px-3 py-2 text-[9px] font-mono leading-relaxed text-text-subtext">
+                      {locationStatusMessage}
+                    </div>
+                  )}
+                  {activeRoute && (
+                    <div className="w-full max-w-[260px] rounded-[4px] border border-border-surface bg-bg-crust/80 px-3 py-2 text-[10px] font-mono text-text-subtext shadow-lg">
+                      <div className="font-semibold uppercase tracking-wider text-amber-300">Best available shelter</div>
+                      <div>{activeRoute.shelterName}</div>
+                      <div>{activeRoute.distanceKm.toFixed(2)} km away</div>
+                      <div>{activeRoute.availableCapacity} spots free</div>
+                      {routeSummary && (
+                        <>
+                          <div className="mt-2 border-t border-border-surface/60 pt-2 text-[9px] uppercase tracking-wider text-text-muted">
+                            Route details
+                          </div>
+                          <div>{routeSummary.distanceKm.toFixed(1)} km via roads</div>
+                          <div>{Math.round(routeSummary.durationMinutes)} min estimated</div>
+                        </>
+                      )}
+                      {routeError && (
+                        <div className="mt-2 border-t border-border-surface/60 pt-2 text-[9px] text-amber-400">{routeError}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
               <FloodMap
                 data={data}
                 theme={appliedTheme}
                 selectedHourDetails={selectedHourDetails}
                 getProbabilityCategory={getProbabilityCategory}
+                isPinningLocation={isPinningLocation}
                 shelterPins={shelterPins}
                 onPinClick={openShelterInfo}
                 selectedShelterPin={selectedShelterPin}
+                onMapClick={handleMapClick}
+                pinnedPosition={pinnedPosition}
+                routeStart={routeStart}
+                currentLocation={currentLocation}
+                onRouteFound={setActiveRoute}
+                onRouteSummaryChange={setRouteSummary}
+                onRouteErrorChange={setRouteError}
+                onLocationPinChange={setPinnedPosition}
               />
             </Suspense>
           </div>

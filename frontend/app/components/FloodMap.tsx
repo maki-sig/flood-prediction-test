@@ -4,6 +4,8 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
+import { findNearestAvailableShelter, type ShelterRouteCandidate } from "../../lib/route-planner";
+import { fetchRoadRoute, type RouteTransportMode } from "../../lib/route-service";
 
 const VKS_POLYGON_COORDS: [number, number][] = [
   [13.6419785, 123.1934035],
@@ -42,12 +44,19 @@ interface FloodMapProps {
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
   isEditMode?: boolean;
+  isPinningLocation?: boolean;
   pinnedPosition?: [number, number] | null;
   onMapClick?: (latlng: [number, number]) => void;
   defaultStyle?: "theme" | "satellite";
   shelterPins?: ShelterPin[];
   onPinClick?: (pin: ShelterPin) => void;
   selectedShelterPin?: ShelterPin | null;
+  routeStart?: [number, number] | null;
+  currentLocation?: [number, number] | null;
+  onRouteFound?: (route: ShelterRouteCandidate | null) => void;
+  onRouteSummaryChange?: (summary: { distanceKm: number; durationMinutes: number } | null) => void;
+  onRouteErrorChange?: (message: string | null) => void;
+  onLocationPinChange?: (location: [number, number]) => void;
 }
 
 export default function FloodMap({
@@ -56,12 +65,19 @@ export default function FloodMap({
   selectedHourDetails,
   getProbabilityCategory,
   isEditMode,
+  isPinningLocation = false,
   pinnedPosition,
   onMapClick,
   defaultStyle = "theme",
   shelterPins = [],
   onPinClick,
   selectedShelterPin,
+  routeStart,
+  currentLocation,
+  onRouteFound,
+  onRouteSummaryChange,
+  onRouteErrorChange,
+  onLocationPinChange,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"theme" | "satellite">(defaultStyle);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
@@ -69,12 +85,21 @@ export default function FloodMap({
   );
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-
+  const [routeSummary, setRouteSummary] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
 
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const polygonRef = useRef<L.Polygon | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const shelterMarkersRef = useRef<L.Marker[]>([]);
+  const routeLineRef = useRef<L.Polyline | null>(null);
+  const routeMarkerRef = useRef<L.Marker | null>(null);
+
+  const routeCallbacks = useMemo(() => ({
+    onRouteFound,
+    onRouteSummaryChange,
+    onRouteErrorChange,
+  }), [onRouteFound, onRouteSummaryChange, onRouteErrorChange]);
 
   // Recalculate map container size and center layout on edit mode toggle
   useEffect(() => {
@@ -124,7 +149,7 @@ export default function FloodMap({
 
   // Handle map click events in edit mode
   useEffect(() => {
-    if (!mapInstance || !isEditMode) {
+    if (!mapInstance || (!isEditMode && !isPinningLocation)) {
       if (mapInstance) {
         try {
           mapInstance.getContainer().style.cursor = "";
@@ -139,7 +164,6 @@ export default function FloodMap({
       }
     };
 
-    // Show crosshair cursor in edit mode
     mapInstance.getContainer().style.cursor = pinnedPosition ? "" : "crosshair";
 
     mapInstance.on("click", handleMapClick);
@@ -150,9 +174,8 @@ export default function FloodMap({
         mapInstance.getContainer().style.cursor = "";
       } catch (err) {}
     };
-  }, [mapInstance, isEditMode, onMapClick, pinnedPosition]);
+  }, [mapInstance, isEditMode, isPinningLocation, onMapClick, pinnedPosition]);
 
-  // Render or update pinned marker position
   useEffect(() => {
     if (!mapInstance) return;
 
@@ -161,20 +184,35 @@ export default function FloodMap({
       markerRef.current = null;
     }
 
-    if (pinnedPosition) {
-      const redIcon = L.icon({
-        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
+    const nextPosition = pinnedPosition ?? currentLocation;
 
-      const marker = L.marker(pinnedPosition, { icon: redIcon }).addTo(mapInstance);
-      markerRef.current = marker;
-    }
-  }, [pinnedPosition, mapInstance]);
+    if (!nextPosition) return;
+
+    const pinIcon = L.icon({
+      iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
+      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41],
+    });
+
+    const marker = L.marker(nextPosition, {
+      icon: pinIcon,
+      draggable: true,
+      zIndexOffset: 1000,
+    }).addTo(mapInstance);
+
+    marker.on("dragend", () => {
+      const updatedLocation: [number, number] = [marker.getLatLng().lat, marker.getLatLng().lng];
+      if (onLocationPinChange) {
+        onLocationPinChange(updatedLocation);
+      }
+    });
+
+    markerRef.current = marker;
+    mapInstance.flyTo(nextPosition, 16, { animate: true, duration: 0.8 });
+  }, [pinnedPosition, currentLocation, mapInstance, onLocationPinChange]);
 
   // Compute effective tile style based on mapStyle selection ("theme" vs "satellite")
   const effectiveTileStyle = useMemo(() => {
@@ -364,6 +402,93 @@ export default function FloodMap({
       shelterMarkersRef.current = [];
     };
   }, [shelterPins, mapInstance, onPinClick, selectedShelterPin]);
+
+  useEffect(() => {
+    if (!mapInstance || !routeStart || !shelterPins.length) {
+      if (routeLineRef.current) {
+        routeLineRef.current.remove();
+        routeLineRef.current = null;
+      }
+      if (routeMarkerRef.current) {
+        routeMarkerRef.current.remove();
+        routeMarkerRef.current = null;
+      }
+      setRouteSummary(null);
+      setRouteError(null);
+      routeCallbacks.onRouteSummaryChange?.(null);
+      routeCallbacks.onRouteErrorChange?.(null);
+      return;
+    }
+
+    const route = findNearestAvailableShelter(routeStart, shelterPins);
+    if (routeCallbacks.onRouteFound) {
+      routeCallbacks.onRouteFound(route);
+    }
+
+    if (routeLineRef.current) {
+      routeLineRef.current.remove();
+      routeLineRef.current = null;
+    }
+    if (routeMarkerRef.current) {
+      routeMarkerRef.current.remove();
+      routeMarkerRef.current = null;
+    }
+
+    if (!route) {
+      setRouteSummary(null);
+      setRouteError("No suitable shelter with available capacity was found.");
+      routeCallbacks.onRouteSummaryChange?.(null);
+      routeCallbacks.onRouteErrorChange?.("No suitable shelter with available capacity was found.");
+      return;
+    }
+
+    setRouteError(null);
+    setRouteSummary(null);
+    routeCallbacks.onRouteSummaryChange?.(null);
+    routeCallbacks.onRouteErrorChange?.(null);
+
+    const runRoute = async () => {
+      try {
+        const roadRoute = await fetchRoadRoute(routeStart, route.goal, "foot" as RouteTransportMode);
+        const roadPoints = roadRoute.geometry.map(([lat, lon]) => [lat, lon] as [number, number]);
+        const routeLine = L.polyline(roadPoints, {
+          color: "#f59e0b",
+          weight: 4,
+          opacity: 0.95,
+          lineCap: "round",
+          lineJoin: "round",
+        }).addTo(mapInstance);
+        routeLineRef.current = routeLine;
+
+        const destinationIcon = L.icon({
+          iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
+          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowSize: [41, 41],
+        });
+
+        const destinationMarker = L.marker(route.goal, { icon: destinationIcon }).addTo(mapInstance);
+        routeMarkerRef.current = destinationMarker;
+        const nextSummary = {
+          distanceKm: roadRoute.distanceKm,
+          durationMinutes: roadRoute.durationMinutes,
+        };
+        setRouteSummary(nextSummary);
+        routeCallbacks.onRouteSummaryChange?.(nextSummary);
+        routeCallbacks.onRouteErrorChange?.(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to calculate a road route.";
+        setRouteError(message);
+        setRouteSummary(null);
+        routeCallbacks.onRouteSummaryChange?.(null);
+        routeCallbacks.onRouteErrorChange?.(message);
+      }
+    };
+
+    void runRoute();
+  }, [routeStart, shelterPins, mapInstance, routeCallbacks]);
 
   // Observe changes to document class so map updates when ThemeToggle changes theme
   useEffect(() => {
