@@ -20,6 +20,7 @@ const DIRECTIONS = [
 ] as const;
 
 function toCell(lat: number, lon: number) {
+  // Turn coordinates into grid cells.
   const x = Math.min(
     GRID_CELLS - 1,
     Math.max(0, Math.round(((lon - GRID_MIN_LON) / (GRID_MAX_LON - GRID_MIN_LON)) * (GRID_CELLS - 1)))
@@ -32,16 +33,19 @@ function toCell(lat: number, lon: number) {
 }
 
 function toCoord(x: number, y: number): [number, number] {
+  // Turn a grid cell back into coordinates.
   const lat = GRID_MIN_LAT + (y / (GRID_CELLS - 1)) * (GRID_MAX_LAT - GRID_MIN_LAT);
   const lon = GRID_MIN_LON + (x / (GRID_CELLS - 1)) * (GRID_MAX_LON - GRID_MIN_LON);
   return [lat, lon];
 }
 
 function toKey(x: number, y: number) {
+  // Make a key for storing each grid cell.
   return `${x},${y}`;
 }
 
 function haversineDistanceKm(a: [number, number], b: [number, number]) {
+  // Find the straight-line distance between two points.
   const [lat1, lon1] = a;
   const [lat2, lon2] = b;
   const toRad = (value: number) => (value * Math.PI) / 180;
@@ -60,10 +64,12 @@ function haversineDistanceKm(a: [number, number], b: [number, number]) {
 }
 
 function heuristicCost(a: [number, number], b: [number, number]) {
+  // Estimate the distance left to the goal.
   return haversineDistanceKm(a, b);
 }
 
 export function buildAStarRoute(start: [number, number], goal: [number, number]) {
+  // Find the shortest grid route from start to goal.
   const startCell = toCell(start[0], start[1]);
   const goalCell = toCell(goal[0], goal[1]);
   const startKey = toKey(startCell.x, startCell.y);
@@ -75,6 +81,7 @@ export function buildAStarRoute(start: [number, number], goal: [number, number])
   const fScore = new Map<string, number>([[startKey, heuristicCost([start[0], start[1]], goal)]]);
 
   while (openSet.size > 0) {
+    // Check the open cell closest to the goal.
     let currentKey = startKey;
     let currentScore = Number.POSITIVE_INFINITY;
 
@@ -87,6 +94,7 @@ export function buildAStarRoute(start: [number, number], goal: [number, number])
     }
 
     if (currentKey === goalKey) {
+      // Follow saved cells to build the route.
       const path: [number, number][] = [];
       let cursor: string | null = currentKey;
       while (cursor) {
@@ -119,6 +127,7 @@ export function buildAStarRoute(start: [number, number], goal: [number, number])
       const neighborGScore = gScore.get(neighborKey);
 
       if (neighborGScore === undefined || tentativeGScore < neighborGScore) {
+        // Save this route if it is shorter.
         cameFrom.set(neighborKey, currentKey);
         gScore.set(neighborKey, tentativeGScore);
         fScore.set(neighborKey, tentativeGScore + heuristicCost(toCoord(nextX, nextY), goal));
