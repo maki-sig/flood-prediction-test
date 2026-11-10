@@ -1,7 +1,7 @@
 import type { ShelterPin } from "./evac-actions";
 import { selectBestShelterRecommendation, type ShelterRecommendationCandidate } from "./shelter-recommendation";
 
-export interface ShelterRouteCandidate extends ShelterRecommendationCandidate {}
+export type ShelterRouteCandidate = ShelterRecommendationCandidate;
 
 const GRID_MIN_LAT = 13.64;
 const GRID_MAX_LAT = 13.65;

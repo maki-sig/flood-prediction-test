@@ -1,33 +1,24 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
-import { findNearestAvailableShelter, type ShelterRouteCandidate } from "../../lib/route-planner";
+import { findNearestAvailableShelter, buildAStarRoute, type ShelterRouteCandidate } from "../../lib/route-planner";
 import { fetchRoadRoute, type RouteTransportMode } from "../../lib/route-service";
-
-const VKS_POLYGON_COORDS: [number, number][] = [
-  [13.6419785, 123.1934035],
-  [13.6416401, 123.1933278],
-  [13.6416585, 123.1918782],
-  [13.6417219, 123.1915338],
-  [13.6421588, 123.1916475],
-  [13.6422572, 123.1913411],
-  [13.643296, 123.191687],
-  [13.6433786, 123.1912268],
-  [13.6444971, 123.1912708],
-  [13.6457181, 123.1922606],
-  [13.6466449, 123.1925039],
-  [13.6462163, 123.1939949],
-  [13.6460041, 123.194951],
-  [13.6439484, 123.1944416],
-  [13.6443549, 123.1938358],
-  [13.642053, 123.1929932],
-  [13.6419785, 123.1934035],
-];
-
-
+import {
+  GIS_DATA_PATHS,
+  GIS_STYLES,
+  VKS_CENTER,
+  VKS_MAX_BOUNDS,
+  GIS_SVG_ICONS,
+  GIS_DEFAULT_VISIBILITY,
+  type GisLayerVisibility,
+  isValidFeatureCollection,
+  formatBuildingPopup,
+  formatRoadPopup,
+  formatWaterwayPopup,
+} from "../../lib/gis-config";
 
 interface HourlyData {
   time: string;
@@ -39,10 +30,10 @@ interface HourlyData {
 }
 
 interface FloodMapProps {
-  data: any;
+  data: unknown;
   theme?: "dark" | "light";
   selectedHourDetails: HourlyData | null;
-  getProbabilityCategory: (p: number, theme: "dark" | "light") => any;
+  getProbabilityCategory: (p: number, theme: "dark" | "light") => { hex: string; [key: string]: unknown };
   isEditMode?: boolean;
   isPinningLocation?: boolean;
   pinnedPosition?: [number, number] | null;
@@ -80,80 +71,380 @@ export default function FloodMap({
   onLocationPinChange,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"theme" | "satellite">(defaultStyle);
+  const [layerVisibility, setLayerVisibility] = useState<GisLayerVisibility>(() => ({
+    ...GIS_DEFAULT_VISIBILITY,
+    satellite: defaultStyle === "satellite",
+  }));
+  const [showLayerPanel, setShowLayerPanel] = useState(false);
   const [appliedTheme, setAppliedTheme] = useState<"dark" | "light">(
-    (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) ? "dark" : "light"
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light"
   );
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [routeSummary, setRouteSummary] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
-  const [routeError, setRouteError] = useState<string | null>(null);
+  const [gisLoadStatus, setGisLoadStatus] = useState<string>("Loading local GIS layers...");
+  const [, setRouteSummary] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
+  const [, setRouteError] = useState<string | null>(null);
 
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const polygonRef = useRef<L.Polygon | null>(null);
+  // Layer references for dynamic updates and visibility toggles
+  const boundaryLayerRef = useRef<L.GeoJSON | null>(null);
+  const floodRiskLayerRef = useRef<L.GeoJSON | null>(null);
+  const buildingsLayerRef = useRef<L.GeoJSON | null>(null);
+  const roadsLayerRef = useRef<L.GeoJSON | null>(null);
+  const riversLayerRef = useRef<L.GeoJSON | null>(null);
+  const satelliteTileLayerRef = useRef<L.TileLayer | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const shelterMarkersRef = useRef<L.Marker[]>([]);
   const routeLineRef = useRef<L.Polyline | null>(null);
   const routeMarkerRef = useRef<L.Marker | null>(null);
+  const rawBoundaryDataRef = useRef<unknown>(null);
 
-  const routeCallbacks = useMemo(() => ({
-    onRouteFound,
-    onRouteSummaryChange,
-    onRouteErrorChange,
-  }), [onRouteFound, onRouteSummaryChange, onRouteErrorChange]);
+  const routeCallbacks = useMemo(
+    () => ({
+      onRouteFound,
+      onRouteSummaryChange,
+      onRouteErrorChange,
+    }),
+    [onRouteFound, onRouteSummaryChange, onRouteErrorChange]
+  );
 
-  // Recalculate map container size and center layout on edit mode toggle
+  // Toggle single layer visibility
+  const toggleLayer = useCallback((layerKey: keyof GisLayerVisibility) => {
+    setLayerVisibility((prev) => {
+      const next = { ...prev, [layerKey]: !prev[layerKey] };
+      if (layerKey === "satellite") {
+        setMapStyle(next.satellite ? "satellite" : "theme");
+      }
+      return next;
+    });
+  }, []);
+
+  // Sync mapStyle with satellite layer visibility
+  const handleStyleChange = useCallback((style: "theme" | "satellite") => {
+    setMapStyle(style);
+    setLayerVisibility((prev) => ({
+      ...prev,
+      satellite: style === "satellite",
+    }));
+  }, []);
+
+  // Initialize Map without external basemap tile APIs
   useEffect(() => {
-    if (!mapInstance) return;
+    if (!data) return;
 
-    // Trigger loading screen overlay during transition
-    setMapReady(false);
+    // Container initialization
+    const map = L.map("flows-leaflet-map", {
+      zoomControl: false,
+      attributionControl: false,
+      fadeAnimation: true,
+      scrollWheelZoom: true,
+      minZoom: 14,
+      maxZoom: 20,
+      maxBounds: VKS_MAX_BOUNDS,
+      maxBoundsViscosity: 0.9,
+      worldCopyJump: false,
+    }).setView(VKS_CENTER, 16);
 
-    // Invalidate size immediately so Leaflet knows the dimensions changed
-    mapInstance.invalidateSize();
+    // Custom attribution indicating local QGIS datasets
+    L.control
+      .attribution({
+        prefix: '<span class="font-mono text-[9px] text-slate-400">FloodVisor GIS • Villa Karangahan</span>',
+      })
+      .addTo(map);
 
-    if (isEditMode) {
-      // Zoom in on the polygon instead until max zoom (maxZoom: 18)
-      const center = polygonRef.current
-        ? polygonRef.current.getBounds().getCenter()
-        : L.latLng(13.6441, 123.1931);
-      const maxZoom = mapInstance.getMaxZoom();
-      mapInstance.flyTo(center, maxZoom, {
-        animate: true,
-        duration: 0.8,
-      });
-    } else {
-      // Smoothly fly back to fit the bounds of the target polygon when edit mode is cancelled
-      if (polygonRef.current) {
-        mapInstance.flyToBounds(polygonRef.current.getBounds(), {
-          padding: [20, 20],
-          animate: true,
-          duration: 0.8,
-        });
+    setMapInstance(map);
+
+    // Load local QGIS GeoJSON files asynchronously
+    let isCancelled = false;
+
+    async function loadGisDatasets() {
+      try {
+        setGisLoadStatus("Loading Barangay boundary...");
+        const [boundaryRes, buildingsRes, roadsRes, riversRes] = await Promise.all([
+          fetch(GIS_DATA_PATHS.boundary).then((r) => (r.ok ? r.json() : null)),
+          fetch(GIS_DATA_PATHS.buildings).then((r) => (r.ok ? r.json() : null)),
+          fetch(GIS_DATA_PATHS.roads).then((r) => (r.ok ? r.json() : null)),
+          fetch(GIS_DATA_PATHS.rivers).then((r) => (r.ok ? r.json() : null)),
+        ]);
+
+        if (isCancelled) return;
+
+        // 1. Waterways / Rivers Layer (Bottom vector layer)
+        if (isValidFeatureCollection(riversRes)) {
+          const riversLayer = L.geoJSON(riversRes, {
+            style: () => ({
+              color: GIS_STYLES.rivers.color,
+              weight: GIS_STYLES.rivers.weight,
+              opacity: GIS_STYLES.rivers.opacity,
+            }),
+            onEachFeature: (feature, layer) => {
+              if (feature.properties) {
+                layer.bindPopup(formatWaterwayPopup(feature.properties), {
+                  className: "gis-custom-popup",
+                });
+              }
+            },
+          }).addTo(map);
+          riversLayerRef.current = riversLayer;
+        }
+
+        // 2. Road Network Layer
+        if (isValidFeatureCollection(roadsRes)) {
+          const roadsLayer = L.geoJSON(roadsRes, {
+            style: (feature) => {
+              const hway = feature?.properties?.highway;
+              const roadStyle =
+                hway === "tertiary"
+                  ? GIS_STYLES.roads.tertiary
+                  : hway === "footway" || hway === "service"
+                  ? GIS_STYLES.roads.footway
+                  : GIS_STYLES.roads.residential;
+              return {
+                color: roadStyle.color,
+                weight: roadStyle.weight,
+                opacity: roadStyle.opacity,
+                dashArray: (roadStyle as any).dashArray,
+              };
+            },
+            onEachFeature: (feature, layer) => {
+              if (feature.properties) {
+                const roadName = feature.properties.name;
+                if (roadName) {
+                  layer.bindTooltip(roadName, {
+                    sticky: true,
+                    className: "gis-road-tooltip",
+                  });
+                }
+                layer.bindPopup(formatRoadPopup(feature.properties), {
+                  className: "gis-custom-popup",
+                });
+              }
+            },
+          }).addTo(map);
+          roadsLayerRef.current = roadsLayer;
+        }
+
+        // 3. Buildings Footprints Layer
+        if (isValidFeatureCollection(buildingsRes)) {
+          const buildingsLayer = L.geoJSON(buildingsRes, {
+            style: () => ({
+              color: GIS_STYLES.building.strokeColor,
+              weight: GIS_STYLES.building.strokeWeight,
+              fillColor: GIS_STYLES.building.fillColor,
+              fillOpacity: GIS_STYLES.building.fillOpacity,
+            }),
+            onEachFeature: (feature, layer) => {
+              if (feature.properties) {
+                layer.bindPopup(formatBuildingPopup(feature.properties), {
+                  className: "gis-custom-popup",
+                });
+                layer.on({
+                  mouseover: (e) => {
+                    const l = e.target;
+                    l.setStyle({
+                      color: GIS_STYLES.building.hover.strokeColor,
+                      weight: GIS_STYLES.building.hover.strokeWeight,
+                      fillColor: GIS_STYLES.building.hover.fillColor,
+                      fillOpacity: GIS_STYLES.building.hover.fillOpacity,
+                    });
+                    if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                      l.bringToFront();
+                    }
+                  },
+                  mouseout: (e) => {
+                    buildingsLayer.resetStyle(e.target);
+                  },
+                });
+              }
+            },
+          }).addTo(map);
+          buildingsLayerRef.current = buildingsLayer;
+        }
+
+        // 4. Barangay Boundary & Dynamic Flood Risk Overlay
+        if (isValidFeatureCollection(boundaryRes)) {
+          rawBoundaryDataRef.current = boundaryRes;
+
+          const t = theme ?? appliedTheme;
+          const category = getProbabilityCategory(selectedHourDetails?.probability || 0, t);
+
+          // Dedicated flood risk fill layer
+          const floodLayer = L.geoJSON(boundaryRes, {
+            style: () => ({
+              color: category.hex,
+              fillColor: category.hex,
+              fillOpacity: t === "dark" ? 0.22 : 0.16,
+              weight: 0,
+              opacity: 0,
+            }),
+          }).addTo(map);
+          floodRiskLayerRef.current = floodLayer;
+
+          // Crisp outline boundary layer
+          const boundaryLayer = L.geoJSON(boundaryRes, {
+            style: () => ({
+              color: GIS_STYLES.boundary.color,
+              weight: GIS_STYLES.boundary.weight,
+              opacity: GIS_STYLES.boundary.opacity,
+              dashArray: GIS_STYLES.boundary.dashArray,
+              fill: false,
+            }),
+          }).addTo(map);
+          boundaryLayerRef.current = boundaryLayer;
+
+          // Automatically fit the map to the official barangay boundary
+          const bounds = boundaryLayer.getBounds();
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [16, 16], maxZoom: 17 });
+          }
+        }
+
+        setMapReady(true);
+      } catch (err) {
+        console.error("Error loading QGIS GeoJSON layers:", err);
+        setMapReady(true);
       }
     }
 
-    const timer = setTimeout(() => {
-      mapInstance.invalidateSize();
-      if (!isEditMode && polygonRef.current) {
-        mapInstance.fitBounds(polygonRef.current.getBounds(), {
-          padding: [20, 20],
-          animate: true,
-        });
-      }
-      // Hide the loading overlay after transition completes
-      setMapReady(true);
-    }, 1000);
+    void loadGisDatasets();
 
-    return () => clearTimeout(timer);
+    return () => {
+      isCancelled = true;
+      map.remove();
+      setMapInstance(null);
+      setMapReady(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  // Handle Local Satellite Raster Layer Toggle (QGIS exported tiles)
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    if (satelliteTileLayerRef.current) {
+      try {
+        satelliteTileLayerRef.current.remove();
+      } catch {}
+      satelliteTileLayerRef.current = null;
+    }
+
+    if (layerVisibility.satellite) {
+      try {
+        const localSatelliteLayer = L.tileLayer(GIS_DATA_PATHS.satelliteTiles, {
+          minZoom: 14,
+          maxZoom: 20,
+          bounds: VKS_MAX_BOUNDS,
+          attribution: "Local Georeferenced Imagery (QGIS)",
+          errorTileUrl: "", // Silently hide missing tile slots without external fallback requests
+        }).addTo(mapInstance);
+
+        // Send satellite layer to bottom so GeoJSON features remain clearly visible on top
+        localSatelliteLayer.bringToBack();
+        satelliteTileLayerRef.current = localSatelliteLayer;
+      } catch (err) {
+        console.warn("Could not mount local satellite tile layer:", err);
+      }
+    }
+  }, [layerVisibility.satellite, mapInstance]);
+
+  // Sync Layer Visibility with Leaflet instances
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    // Boundary
+    if (boundaryLayerRef.current) {
+      if (layerVisibility.boundary && !mapInstance.hasLayer(boundaryLayerRef.current)) {
+        boundaryLayerRef.current.addTo(mapInstance);
+      } else if (!layerVisibility.boundary && mapInstance.hasLayer(boundaryLayerRef.current)) {
+        mapInstance.removeLayer(boundaryLayerRef.current);
+      }
+    }
+
+    // Flood Risk Overlay
+    if (floodRiskLayerRef.current) {
+      if (layerVisibility.floodRisk && !mapInstance.hasLayer(floodRiskLayerRef.current)) {
+        floodRiskLayerRef.current.addTo(mapInstance);
+      } else if (!layerVisibility.floodRisk && mapInstance.hasLayer(floodRiskLayerRef.current)) {
+        mapInstance.removeLayer(floodRiskLayerRef.current);
+      }
+    }
+
+    // Buildings
+    if (buildingsLayerRef.current) {
+      if (layerVisibility.buildings && !mapInstance.hasLayer(buildingsLayerRef.current)) {
+        buildingsLayerRef.current.addTo(mapInstance);
+      } else if (!layerVisibility.buildings && mapInstance.hasLayer(buildingsLayerRef.current)) {
+        mapInstance.removeLayer(buildingsLayerRef.current);
+      }
+    }
+
+    // Roads
+    if (roadsLayerRef.current) {
+      if (layerVisibility.roads && !mapInstance.hasLayer(roadsLayerRef.current)) {
+        roadsLayerRef.current.addTo(mapInstance);
+      } else if (!layerVisibility.roads && mapInstance.hasLayer(roadsLayerRef.current)) {
+        mapInstance.removeLayer(roadsLayerRef.current);
+      }
+    }
+
+    // Rivers / Waterways
+    if (riversLayerRef.current) {
+      if (layerVisibility.rivers && !mapInstance.hasLayer(riversLayerRef.current)) {
+        riversLayerRef.current.addTo(mapInstance);
+      } else if (!layerVisibility.rivers && mapInstance.hasLayer(riversLayerRef.current)) {
+        mapInstance.removeLayer(riversLayerRef.current);
+      }
+    }
+  }, [layerVisibility, mapInstance]);
+
+  // Update dynamic flood risk color overlay when prediction hour or theme changes
+  useEffect(() => {
+    if (!selectedHourDetails || !floodRiskLayerRef.current) return;
+    const t = theme ?? appliedTheme;
+    const category = getProbabilityCategory(selectedHourDetails.probability, t);
+
+    // Compute opacity based on risk level
+    const pct = (selectedHourDetails.probability || 0) * 100;
+    const fillOpacity = pct < 1.0 ? 0.12 : pct < 10.0 ? 0.22 : pct < 35.0 ? 0.32 : 0.44;
+
+    floodRiskLayerRef.current.setStyle({
+      color: category.hex,
+      fillColor: category.hex,
+      fillOpacity,
+      weight: 0,
+      opacity: 0,
+    });
+  }, [selectedHourDetails, theme, appliedTheme, getProbabilityCategory]);
+
+  // Handle Edit Mode zoom & fitBounds transitions
+  useEffect(() => {
+    if (!mapInstance) return;
+
+    mapInstance.invalidateSize();
+
+    const bounds = boundaryLayerRef.current?.getBounds();
+
+    if (isEditMode) {
+      const center = bounds?.isValid() ? bounds.getCenter() : L.latLng(VKS_CENTER[0], VKS_CENTER[1]);
+      mapInstance.flyTo(center, 18, {
+        animate: true,
+        duration: 0.8,
+      });
+    } else if (bounds?.isValid()) {
+      mapInstance.flyToBounds(bounds, {
+        padding: [16, 16],
+        animate: true,
+        duration: 0.8,
+      });
+    }
   }, [isEditMode, mapInstance]);
 
-  // Handle map click events in edit mode
+  // Map click handling for pinning
   useEffect(() => {
     if (!mapInstance || (!isEditMode && !isPinningLocation)) {
       if (mapInstance) {
         try {
           mapInstance.getContainer().style.cursor = "";
-        } catch (err) {}
+        } catch {}
       }
       return;
     }
@@ -165,17 +456,17 @@ export default function FloodMap({
     };
 
     mapInstance.getContainer().style.cursor = pinnedPosition ? "" : "crosshair";
-
     mapInstance.on("click", handleMapClick);
 
     return () => {
       mapInstance.off("click", handleMapClick);
       try {
         mapInstance.getContainer().style.cursor = "";
-      } catch (err) {}
+      } catch {}
     };
   }, [mapInstance, isEditMode, isPinningLocation, onMapClick, pinnedPosition]);
 
+  // Render Pinned User Location Marker using self-contained SVG icon
   useEffect(() => {
     if (!mapInstance) return;
 
@@ -185,23 +476,30 @@ export default function FloodMap({
     }
 
     const nextPosition = pinnedPosition ?? currentLocation;
-
     if (!nextPosition) return;
 
-    const pinIcon = L.icon({
-      iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41],
+    const userPinIcon = L.divIcon({
+      html: GIS_SVG_ICONS.userPin,
+      className: "gis-user-pin",
+      iconSize: [28, 37],
+      iconAnchor: [14, 37],
+      popupAnchor: [0, -34],
     });
 
     const marker = L.marker(nextPosition, {
-      icon: pinIcon,
+      icon: userPinIcon,
       draggable: true,
       zIndexOffset: 1000,
     }).addTo(mapInstance);
+
+    marker.bindPopup(
+      `<div class="gis-custom-popup" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #f1f5f9;">
+        <div style="font-weight: 700; color: #06b6d4; margin-bottom: 4px;">📍 Selected Location</div>
+        <div>Lat: ${nextPosition[0].toFixed(5)}</div>
+        <div>Lng: ${nextPosition[1].toFixed(5)}</div>
+        <div style="font-size: 9px; color: #94a3b8; margin-top: 4px;">Drag to adjust evacuation starting point</div>
+      </div>`
+    );
 
     marker.on("dragend", () => {
       const updatedLocation: [number, number] = [marker.getLatLng().lat, marker.getLatLng().lng];
@@ -211,189 +509,89 @@ export default function FloodMap({
     });
 
     markerRef.current = marker;
-    mapInstance.flyTo(nextPosition, 16, { animate: true, duration: 0.8 });
+    mapInstance.flyTo(nextPosition, 17, { animate: true, duration: 0.8 });
   }, [pinnedPosition, currentLocation, mapInstance, onLocationPinChange]);
 
-  // Compute effective tile style based on mapStyle selection ("theme" vs "satellite")
-  const effectiveTileStyle = useMemo(() => {
-    if (mapStyle === "satellite") return "satellite";
-    const currentTheme = theme ?? appliedTheme;
-    return currentTheme === "light" ? "light" : "dark";
-  }, [mapStyle, theme, appliedTheme]);
-
-  // Explicit global bounds clamped to the world to prevent infinite panning
-  const worldBounds: L.LatLngBoundsExpression = [
-    [-90, -180], // SouthWest corner
-    [90, 180], // NorthEast corner
-  ];
-
-  // Initialize Map
-  useEffect(() => {
-    if (!data) return;
-
-    // Reset ready state for each (re)initialization
-    setMapReady(false);
-
-    // Set up Leaflet Map inside #flows-leaflet-map
-    const map = L.map("flows-leaflet-map", {
-      zoomControl: false,
-      attributionControl: false,
-      fadeAnimation: false,
-      scrollWheelZoom: false,
-      minZoom: 2,
-      maxZoom: 18,
-      maxBounds: worldBounds,
-      maxBoundsViscosity: 1.0,
-      worldCopyJump: false,
-    }).setView([13.6441, 123.1931], 16);
-
-    // Dynamic Attribution pinned neatly
-    L.control.attribution({ prefix: false }).addTo(map);
-
-    // Determine initial color style
-    const t = theme ?? appliedTheme;
-    const category = getProbabilityCategory(
-      selectedHourDetails?.probability || 0,
-      t
-    );
-
-    const polygon = L.polygon(VKS_POLYGON_COORDS, {
-      color: category.hex,
-      fillColor: category.hex,
-      fillOpacity: (theme ?? appliedTheme) === "dark" ? 0.18 : 0.14,
-      weight: 2,
-      opacity: 0.85,
-    }).addTo(map);
-
-    polygonRef.current = polygon;
-    setMapInstance(map);
-
-    // Automatically fit polygon
-    map.fitBounds(polygon.getBounds(), { padding: [10, 10] });
-
-    // Mark map as ready once all visible tiles have loaded
-    map.once("load", () => setMapReady(true));
-    // Fallback: some tile providers don't always fire 'load' — mark ready after a short delay
-    const fallbackTimer = setTimeout(() => setMapReady(true), 2500);
-
-    return () => {
-      clearTimeout(fallbackTimer);
-      map.remove();
-      setMapInstance(null);
-      setMapReady(false);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, theme, appliedTheme]);
-
-  // Dynamically swap the active tile layer based on effectiveTileStyle selection
-  useEffect(() => {
-    if (!mapInstance || !(mapInstance as any)._container) return;
-
-    // Remove existing tile layer if any
-    if (tileLayerRef.current) {
-      try {
-        tileLayerRef.current.remove();
-      } catch (e) {
-        // Ignore if layer is already removed or map is destroyed
-      }
-    }
-
-    let url = "";
-    let attrib = "";
-
-    if (effectiveTileStyle === "dark") {
-      url = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-      attrib = "&copy; CARTO";
-    } else if (effectiveTileStyle === "light") {
-      url = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-      attrib = "&copy; CARTO";
-    } else {
-      url =
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-      attrib = "&copy; Esri";
-    }
-
-    try {
-      const newLayer = L.tileLayer(url, {
-        maxZoom: 20,
-        attribution: attrib,
-        subdomains: "abcd",
-        noWrap: true,
-        bounds: worldBounds,
-      }).addTo(mapInstance);
-
-      tileLayerRef.current = newLayer;
-    } catch (e) {
-      // Map instance is likely unmounted or mid-destruction
-      console.warn("Leaflet error adding layer to map:", e);
-    }
-  }, [effectiveTileStyle, mapInstance]);
-
-  // Dynamically update polygon color styles on selected hour or theme change
-  useEffect(() => {
-    if (!selectedHourDetails) return;
-    const t = theme ?? appliedTheme;
-    const category = getProbabilityCategory(selectedHourDetails.probability, t);
-
-    if (polygonRef.current) {
-      polygonRef.current.setStyle({
-        color: category.hex,
-        fillColor: category.hex,
-        fillOpacity: t === "dark" ? 0.18 : 0.14,
-        weight: 2,
-        opacity: 0.85,
-      });
-    }
-  }, [selectedHourDetails, theme, appliedTheme, getProbabilityCategory]);
-
-  // Render shelter pins fetched from the database
+  // Render Evacuation Shelter Pins with self-contained SVG markers
   useEffect(() => {
     if (!mapInstance || !shelterPins.length) return;
 
-    // Guard: ensure the map container is actually mounted in the DOM
-    try {
-      const container = mapInstance.getContainer();
-      if (!container || !container.isConnected) return;
-    } catch {
-      return;
-    }
-
-    // Clear any previously rendered shelter markers
     shelterMarkersRef.current.forEach((m) => m.remove());
     shelterMarkersRef.current = [];
 
-    const defaultIcon = L.icon({
-      iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
-      shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41],
+    if (!layerVisibility.shelters) return;
+
+    const defaultShelterIcon = L.divIcon({
+      html: GIS_SVG_ICONS.shelterDefault,
+      className: "gis-shelter-pin",
+      iconSize: [28, 37],
+      iconAnchor: [14, 37],
+      popupAnchor: [0, -34],
     });
 
-    const activeIcon = L.divIcon({
-      html: `<div class="active-pinpoint-wrapper" style="width: 25px; height: 41px; position: relative;">
-               <img src="https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" style="width: 25px; height: 41px; display: block;" class="active-pinpoint-heartbeat" />
-             </div>`,
-      className: "active-pinpoint-container",
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
+    const activeShelterIcon = L.divIcon({
+      html: GIS_SVG_ICONS.shelterActive,
+      className: "gis-shelter-pin-active",
+      iconSize: [32, 42],
+      iconAnchor: [16, 42],
+      popupAnchor: [0, -38],
     });
 
     shelterPins.forEach((pin) => {
       try {
         const isActive = selectedShelterPin && selectedShelterPin.shelter_id === pin.shelter_id;
-        const marker = L.marker([pin.latitude, pin.longitude], { 
-          icon: isActive ? activeIcon : defaultIcon 
+        const marker = L.marker([pin.latitude, pin.longitude], {
+          icon: isActive ? activeShelterIcon : defaultShelterIcon,
+          zIndexOffset: isActive ? 900 : 500,
         }).addTo(mapInstance);
-        
+
+        const shelter = pin.shelter;
+        const name = shelter?.shelter_name || "Designated Evacuation Shelter";
+        const maxCap = shelter?.max_capacity ?? 0;
+        const currCap = shelter?.curr_capacity ?? 0;
+        const available = Math.max(0, maxCap - currCap);
+        const contact = shelter?.shelter_head?.contact_num || "N/A";
+        const contactPerson = shelter?.shelter_head
+          ? `${shelter.shelter_head.fname} ${shelter.shelter_head.lname}`
+          : "Barangay Disaster Officer";
+
+        const popupHtml = `
+          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.4; color: #f1f5f9; min-width: 190px;">
+            <div style="font-weight: 700; color: #f43f5e; font-size: 12px; border-bottom: 1px solid #334155; padding-bottom: 4px; margin-bottom: 6px;">
+              🏥 ${name}
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="color: #94a3b8;">Status:</span>
+              <span style="font-weight: 600; color: ${available > 0 ? "#10b981" : "#ef4444"};">
+                ${available > 0 ? "AVAILABLE" : "FULL"}
+              </span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="color: #94a3b8;">Capacity:</span>
+              <span>${currCap} / ${maxCap}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="color: #94a3b8;">Contact:</span>
+              <span>${contact}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="color: #94a3b8;">Head:</span>
+              <span>${contactPerson}</span>
+            </div>
+            <div style="margin-top: 6px; padding-top: 4px; border-top: 1px solid #1e293b; font-size: 9px; color: #64748b;">
+              Villa Karangahan Evac Network
+            </div>
+          </div>
+        `;
+
+        marker.bindPopup(popupHtml, { className: "gis-custom-popup" });
+
         if (onPinClick) {
           marker.on("click", () => onPinClick(pin));
         }
         shelterMarkersRef.current.push(marker);
-      } catch {
-        // Skip pins that fail to render (e.g. map not ready)
+      } catch (err) {
+        console.warn("Error mounting shelter pin:", err);
       }
     });
 
@@ -401,8 +599,9 @@ export default function FloodMap({
       shelterMarkersRef.current.forEach((m) => m.remove());
       shelterMarkersRef.current = [];
     };
-  }, [shelterPins, mapInstance, onPinClick, selectedShelterPin]);
+  }, [shelterPins, mapInstance, onPinClick, selectedShelterPin, layerVisibility.shelters]);
 
+  // Evacuation Route Calculation & Visualization with Offline A* Fallback
   useEffect(() => {
     if (!mapInstance || !routeStart || !shelterPins.length) {
       if (routeLineRef.current) {
@@ -449,37 +648,64 @@ export default function FloodMap({
 
     const runRoute = async () => {
       try {
-        const roadRoute = await fetchRoadRoute(routeStart, route.goal, "foot" as RouteTransportMode);
-        const roadPoints = roadRoute.geometry.map(([lat, lon]) => [lat, lon] as [number, number]);
+        let roadPoints: [number, number][] = [];
+        let distanceKm = 0;
+        let durationMinutes = 0;
+
+        try {
+          const roadRoute = await fetchRoadRoute(routeStart, route.goal, "foot" as RouteTransportMode);
+          roadPoints = roadRoute.geometry.map(([lat, lon]) => [lat, lon] as [number, number]);
+          distanceKm = roadRoute.distanceKm;
+          durationMinutes = roadRoute.durationMinutes;
+        } catch {
+          // Offline / Local GIS Fallback: use local A* algorithm without external network calls
+          const aStarPoints = buildAStarRoute(routeStart, route.goal);
+          if (aStarPoints && aStarPoints.length > 0) {
+            roadPoints = aStarPoints;
+            distanceKm = route.distanceKm || 0.45;
+            durationMinutes = Math.max(2, Math.round(distanceKm * 14)); // Average walking pace
+          } else {
+            roadPoints = [routeStart, route.goal];
+            distanceKm = route.distanceKm || 0.45;
+            durationMinutes = 6;
+          }
+        }
+
         const routeLine = L.polyline(roadPoints, {
           color: "#f59e0b",
           weight: 4,
           opacity: 0.95,
           lineCap: "round",
           lineJoin: "round",
+          dashArray: "8, 4",
         }).addTo(mapInstance);
         routeLineRef.current = routeLine;
 
-        const destinationIcon = L.icon({
-          iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
-          shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34],
-          shadowSize: [41, 41],
+        const destinationIcon = L.divIcon({
+          html: GIS_SVG_ICONS.routeDestination,
+          className: "gis-dest-pin",
+          iconSize: [28, 37],
+          iconAnchor: [14, 37],
+          popupAnchor: [0, -34],
         });
 
         const destinationMarker = L.marker(route.goal, { icon: destinationIcon }).addTo(mapInstance);
+        destinationMarker.bindPopup(
+          `<div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #f1f5f9;">
+            <div style="font-weight: 700; color: #10b981; margin-bottom: 2px;">🏁 Evacuation Destination</div>
+            <div>${route.shelterName}</div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Distance: ${distanceKm.toFixed(2)} km • ~${durationMinutes} mins</div>
+          </div>`,
+          { className: "gis-custom-popup" }
+        );
         routeMarkerRef.current = destinationMarker;
-        const nextSummary = {
-          distanceKm: roadRoute.distanceKm,
-          durationMinutes: roadRoute.durationMinutes,
-        };
+
+        const nextSummary = { distanceKm, durationMinutes };
         setRouteSummary(nextSummary);
         routeCallbacks.onRouteSummaryChange?.(nextSummary);
         routeCallbacks.onRouteErrorChange?.(null);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to calculate a road route.";
+        const message = error instanceof Error ? error.message : "Unable to calculate route.";
         setRouteError(message);
         setRouteSummary(null);
         routeCallbacks.onRouteSummaryChange?.(null);
@@ -490,7 +716,7 @@ export default function FloodMap({
     void runRoute();
   }, [routeStart, shelterPins, mapInstance, routeCallbacks]);
 
-  // Observe changes to document class so map updates when ThemeToggle changes theme
+  // Observe theme changes
   useEffect(() => {
     if (typeof document === "undefined" || theme) return;
     const el = document.documentElement;
@@ -501,147 +727,215 @@ export default function FloodMap({
     return () => obs.disconnect();
   }, [theme]);
 
+  // Fit view to barangay boundary
+  const handleResetPosition = useCallback(() => {
+    if (!mapInstance) return;
+    const bounds = boundaryLayerRef.current?.getBounds();
+    if (bounds?.isValid()) {
+      mapInstance.flyToBounds(bounds, {
+        padding: [16, 16],
+        animate: true,
+        duration: 0.9,
+      });
+    } else {
+      mapInstance.flyTo(VKS_CENTER, 16, { animate: true, duration: 0.9 });
+    }
+  }, [mapInstance]);
+
   return (
     <>
-      <div id="flows-leaflet-map" className="w-full h-full z-10" />
+      {/* Map Container with Dark GIS Basemap Styling */}
+      <div
+        id="flows-leaflet-map"
+        className="w-full h-full z-10 relative"
+        style={{
+          backgroundColor: GIS_STYLES.mapBackground,
+          backgroundImage:
+            "radial-gradient(rgba(56, 189, 248, 0.04) 1px, transparent 1px), radial-gradient(rgba(148, 163, 184, 0.02) 1px, transparent 1px)",
+          backgroundSize: "32px 32px, 16px 16px",
+          backgroundPosition: "0 0, 8px 8px",
+        }}
+      />
 
-
-
-      {/* Map loading overlay — fades out once Leaflet tiles are ready */}
+      {/* Map loading overlay — fades out once QGIS datasets are mounted */}
       <div
         className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 pointer-events-none"
         style={{
-          background: "var(--bg-base, #1e1e2e)",
+          background: "var(--bg-base, #111827)",
           opacity: mapReady ? 0 : 1,
           transition: "opacity 0.5s ease",
         }}
       >
-        {/* Animated grid skeleton imitating a map grid */}
-        <div className="relative w-full h-full overflow-hidden">
-          {/* Shimmer grid lines */}
+        <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-center">
           <div
             className="absolute inset-0"
             style={{
               backgroundImage:
-                "linear-gradient(rgba(59,130,246,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(59,130,246,0.06) 1px, transparent 1px)",
-              backgroundSize: "48px 48px",
+                "linear-gradient(rgba(6, 182, 212, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(6, 182, 212, 0.08) 1px, transparent 1px)",
+              backgroundSize: "40px 40px",
             }}
           />
-          {/* Shimmer sweep */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(105deg, transparent 40%, rgba(59,130,246,0.07) 50%, transparent 60%)",
-              backgroundSize: "200% 100%",
-              animation: "map-shimmer 2s linear infinite",
-            }}
-          />
-          {/* Centre content */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            {/* Spinning ring */}
+          <div className="relative z-10 flex flex-col items-center justify-center gap-3 bg-slate-900/80 p-6 rounded-lg border border-slate-700/60 backdrop-blur-sm shadow-2xl">
             <div className="relative w-10 h-10">
-              <div
-                className="absolute inset-0 rounded-full border-2 border-primary-blue/20"
-              />
-              <div
-                className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary-blue animate-spin"
-              />
+              <div className="absolute inset-0 rounded-full border-2 border-cyan-500/20" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-400 animate-spin" />
             </div>
-            <span
-              className="font-mono text-[10px] uppercase tracking-widest"
-              style={{ color: "var(--primary-blue)" }}
-            >
-              Rendering Cartographic Engine
+            <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-cyan-400">
+              GIS Cartographic Engine
             </span>
-            <span
-              className="font-mono text-[9px] uppercase tracking-widest"
-              style={{ color: "var(--text-muted, #585b70)" }}
-            >
-              Loading tile layers&hellip;
+            <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">
+              {gisLoadStatus}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Keyframe for the shimmer sweep */}
-      <style>{`
-        @keyframes map-shimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
-
-      {/* Custom Map Menubar (Bottom Center on Mobile, Top Right on Desktop) */}
-      <div className="absolute bottom-4 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[90vw] md:max-w-none">
+      {/* Custom GIS Map Menubar (Bottom Center on Mobile, Top Right on Desktop) */}
+      <div className="absolute bottom-4 md:bottom-auto md:top-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-20 flex items-center gap-1.5 md:gap-2 border border-border-surface bg-bg-mantle px-2 py-1 md:px-3 md:py-2 rounded-[4px] shadow-2xl font-mono text-[8px] md:text-[9px] text-text-text max-w-[95vw] md:max-w-none backdrop-blur-md">
         {/* Zoom & Reset Buttons */}
         <div className="flex items-center gap-1 border-r border-border-surface pr-1.5 md:pr-2.5">
           <button
             title="Zoom In"
+            type="button"
             onClick={() => mapInstance?.zoomIn()}
-            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
+            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-cyan-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
           >
             ＋
           </button>
           <button
             title="Zoom Out"
+            type="button"
             onClick={() => mapInstance?.zoomOut()}
-            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
+            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-cyan-400 rounded-[4px] cursor-pointer transition-colors font-bold text-xs select-none"
           >
             －
           </button>
           <button
-            title="Reset Map Position"
-            onClick={() => {
-              if (polygonRef.current) {
-                mapInstance?.flyToBounds(polygonRef.current.getBounds(), {
-                  padding: [10, 10],
-                  animate: true,
-                  duration: 1.2,
-                });
-              }
-            }}
-            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text rounded-[4px] cursor-pointer transition-colors"
+            title="Fit to Barangay Boundary"
+            type="button"
+            onClick={handleResetPosition}
+            className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center bg-bg-crust border border-border-surface hover:bg-border-surface hover:text-cyan-400 text-text-text rounded-[4px] cursor-pointer transition-colors"
           >
-            <svg
-              className="w-3 h-3 md:w-3.5 md:h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 3v2m0 14v2m9-9h-2M5 12H3m14 0a5 5 0 11-10 0 5 5 0 0110 0z"
-              />
+            <svg className="w-3 h-3 md:w-3.5 md:h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2m0 14v2m9-9h-2M5 12H3m14 0a5 5 0 11-10 0 5 5 0 0110 0z" />
             </svg>
           </button>
         </div>
 
-        {/* Map Style Selector */}
-        <div className="flex items-center gap-1 pl-0.5">
-          <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-wider mr-0.5 md:mr-1">
-            STYLE:
+        {/* GIS Style Selector (Local GIS Vector Basemap vs Local Satellite) */}
+        <div className="flex items-center gap-1 pl-0.5 border-r border-border-surface pr-1.5 md:pr-2.5">
+          <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-wider mr-0.5">
+            GIS:
           </span>
-          {(["theme", "satellite"] as const).map((style) => (
-            <button
-              key={style}
-              onClick={() => setMapStyle(style)}
-              className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${mapStyle === style
-                ? "bg-primary-blue border-primary-blue text-white"
-                : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-primary-blue text-text-text"
-                }`}
-            >
-              {style}
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => handleStyleChange("theme")}
+            className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${
+              mapStyle === "theme"
+                ? "bg-cyan-600 border-cyan-500 text-white shadow-sm"
+                : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-cyan-400 text-text-text"
+            }`}
+          >
+            Vector
+          </button>
+          <button
+            type="button"
+            onClick={() => handleStyleChange("satellite")}
+            title="Local Georeferenced Satellite Tiles (QGIS)"
+            className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all ${
+              mapStyle === "satellite"
+                ? "bg-cyan-600 border-cyan-500 text-white shadow-sm"
+                : "bg-bg-crust border-border-surface hover:bg-border-surface hover:text-cyan-400 text-text-text"
+            }`}
+          >
+            Satellite
+          </button>
+        </div>
+
+        {/* GIS Layers Toggle Dropdown Trigger */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowLayerPanel((v) => !v)}
+            className={`px-1.5 py-0.5 md:px-2 md:py-1 text-[7px] md:text-[8px] font-bold uppercase rounded-[2px] cursor-pointer border transition-all flex items-center gap-1 ${
+              showLayerPanel
+                ? "bg-border-surface text-cyan-400 border-cyan-500"
+                : "bg-bg-crust border-border-surface hover:bg-border-surface text-text-text"
+            }`}
+          >
+            <svg className="w-2.5 h-2.5 md:w-3 md:h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+            Layers
+          </button>
+
+          {/* Layer Visibility Menu */}
+          {showLayerPanel && (
+            <div className="absolute right-0 top-full mt-1.5 bg-bg-mantle border border-border-surface rounded-[4px] p-2 shadow-2xl flex flex-col gap-1.5 min-w-[130px] z-50">
+              <span className="text-[7.5px] uppercase tracking-wider text-text-subtext font-bold border-b border-border-surface pb-1">
+                QGIS Layers
+              </span>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-cyan-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.boundary}
+                  onChange={() => toggleLayer("boundary")}
+                  className="rounded text-cyan-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                />
+                <span className="text-[8px]">Boundary</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-cyan-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.buildings}
+                  onChange={() => toggleLayer("buildings")}
+                  className="rounded text-cyan-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                />
+                <span className="text-[8px]">Buildings</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-cyan-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.roads}
+                  onChange={() => toggleLayer("roads")}
+                  className="rounded text-cyan-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                />
+                <span className="text-[8px]">Road Network</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-cyan-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.rivers}
+                  onChange={() => toggleLayer("rivers")}
+                  className="rounded text-cyan-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                />
+                <span className="text-[8px]">Waterways</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-cyan-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.floodRisk}
+                  onChange={() => toggleLayer("floodRisk")}
+                  className="rounded text-cyan-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                />
+                <span className="text-[8px]">Flood Risk Overlay</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-cyan-400 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={layerVisibility.shelters}
+                  onChange={() => toggleLayer("shelters")}
+                  className="rounded text-cyan-500 focus:ring-0 w-3 h-3 cursor-pointer"
+                />
+                <span className="text-[8px]">Shelters</span>
+              </label>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Absolute floating premium risk legend (Top Right on Mobile, Bottom Right on Desktop) */}
-      <div className="absolute top-4 right-3 md:top-auto md:bottom-6 md:right-6 bg-bg-mantle border border-border-surface px-2.5 py-2 md:px-3 md:py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1 md:gap-1.5 z-20 shadow-2xl min-w-[90px] md:min-w-[160px]">
+      {/* Floating Risk Legend (Top Right on Mobile, Bottom Right on Desktop) */}
+      <div className="absolute top-4 right-3 md:top-auto md:bottom-6 md:right-6 bg-bg-mantle border border-border-surface px-2.5 py-2 md:px-3 md:py-2 rounded-[4px] font-mono text-[8px] md:text-[9px] text-text-text flex flex-col items-stretch gap-1 md:gap-1.5 z-20 shadow-2xl min-w-[90px] md:min-w-[160px] backdrop-blur-md">
         <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest border-b border-border-surface/60 pb-1 mb-0.5">
           Flood Probability
         </span>
@@ -672,30 +966,68 @@ export default function FloodMap({
           </div>
         </div>
       </div>
-      {/* Active Pin Pulse Heartbeat Styles */}
+
+      {/* Global Leaflet Styles & Popup Overrides for Local Dark GIS Mapping */}
       <style>{`
+        /* Heartbeat pulse animation for active shelter pin */
         @keyframes heartbeat {
           0% { transform: scale(1) translate3d(0,0,0); }
-          20% { transform: scale(1.15) translate3d(0,0,0); }
+          20% { transform: scale(1.18) translate3d(0,0,0); }
           40% { transform: scale(1) translate3d(0,0,0); }
-          60% { transform: scale(1.15) translate3d(0,0,0); }
+          60% { transform: scale(1.18) translate3d(0,0,0); }
           80% { transform: scale(1) translate3d(0,0,0); }
           100% { transform: scale(1) translate3d(0,0,0); }
         }
         .active-pinpoint-heartbeat {
-          animation: heartbeat 3.2s infinite ease-in-out;
+          animation: heartbeat 2.8s infinite ease-in-out;
           transform-origin: bottom center;
           will-change: transform;
-          backface-visibility: hidden;
-          -webkit-backface-visibility: hidden;
         }
-        .active-pinpoint-container {
+        .gis-shelter-pin-active {
           z-index: 1000 !important;
+        }
+
+        /* Dark modern styling for Leaflet Popups */
+        .leaflet-popup-content-wrapper {
+          background-color: #0f172a !important;
+          color: #f1f5f9 !important;
+          border: 1px solid #334155 !important;
+          border-radius: 6px !important;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+          padding: 2px !important;
+        }
+        .leaflet-popup-content {
+          margin: 10px 12px !important;
+          line-height: 1.4 !important;
+        }
+        .leaflet-popup-tip {
+          background-color: #0f172a !important;
+          border-left: 1px solid #334155 !important;
+          border-top: 1px solid #334155 !important;
+        }
+        .leaflet-container a.leaflet-popup-close-button {
+          color: #94a3b8 !important;
+          padding: 4px 4px 0 0 !important;
+        }
+        .leaflet-container a.leaflet-popup-close-button:hover {
+          color: #38bdf8 !important;
+        }
+
+        /* Road name tooltip */
+        .gis-road-tooltip {
+          background-color: #0f172a !important;
+          color: #cbd5e1 !important;
+          border: 1px solid #334155 !important;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+          font-size: 9px !important;
+          border-radius: 3px !important;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
+          padding: 2px 6px !important;
+        }
+        .gis-road-tooltip:before {
+          border-top-color: #0f172a !important;
         }
       `}</style>
     </>
   );
 }
-
-
-
