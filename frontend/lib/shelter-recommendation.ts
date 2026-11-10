@@ -52,28 +52,45 @@ export function buildShelterRecommendations(
   return filterAvailableShelters(shelters)
     .map((pin) => {
       const goal: [number, number] = [pin.latitude, pin.longitude];
+
+      // Straight-line Haversine distance — used as the primary ranking metric.
+      // This is always geometrically accurate and is NOT affected by A* grid
+      // discretization. Any shelter that passed filterAvailableShelters() already
+      // has at least one free slot, so proximity is the only ranking criterion.
+      const straightLineKm = haversineDistanceKm(start, goal);
+
+      // Build the visual route path (only used for drawing the line on the map)
       const path = routePlanner(start, goal);
-      const distanceKm = path.length > 1
+
+      // Traced path length for display — may differ from crow-flies distance
+      const pathDistanceKm = path.length > 1
         ? path.reduce((total, point, index) => {
             if (index === 0) return total;
             return total + haversineDistanceKm(path[index - 1], point);
           }, 0)
-        : haversineDistanceKm(start, goal);
+        : straightLineKm;
+
       const { availableCapacity } = getShelterCapacityInfo(pin);
-      const capacityPenalty = Math.max(0, 6 - availableCapacity) * 0.08;
-      const score = distanceKm + capacityPenalty;
+
+      // Score = pure straight-line distance. No capacity penalty is added here
+      // because filterAvailableShelters() already guarantees every candidate has
+      // remaining capacity. Adding a penalty would cause a closer-but-almost-full
+      // shelter to lose to a farther-but-emptier one, which is incorrect behaviour.
+      // Available capacity is used only as a secondary tie-breaker in the sort below.
+      const score = straightLineKm;
 
       return {
         shelterId: pin.shelter_id,
         shelterName: pin.shelter?.shelter_name ?? "Shelter",
         path,
-        distanceKm,
+        distanceKm: pathDistanceKm,
         availableCapacity,
         goal,
         score,
       };
     })
-    .sort((a, b) => a.score - b.score || a.distanceKm - b.distanceKm || b.availableCapacity - a.availableCapacity);
+    // Primary: nearest first. Secondary: more available capacity breaks ties.
+    .sort((a, b) => a.score - b.score || b.availableCapacity - a.availableCapacity);
 }
 
 export function selectBestShelterRecommendation(

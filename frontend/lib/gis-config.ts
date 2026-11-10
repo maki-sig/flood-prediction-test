@@ -63,6 +63,13 @@ export const GIS_STYLES = {
     strokeWeight: 0.8,
     fillColor: "#94a3b8", // Light gray
     fillOpacity: 0.38,
+    // Dark-mode overrides — brighter stroke so outlines are visible on the dark basemap
+    dark: {
+      strokeColor: "#94a3b8",
+      strokeWeight: 1.2,
+      fillColor: "#94a3b8",
+      fillOpacity: 0.28,
+    },
     hover: {
       strokeColor: "#38bdf8",
       strokeWeight: 2,
@@ -253,42 +260,81 @@ function escapeHtml(text: unknown): string {
 }
 
 /**
- * Self-contained SVG Markers (no external CDN images required)
+ * Returns capacity status for a shelter given curr and max capacity.
+ * - 'full': at or above 90% capacity
+ * - 'almost': 60–89% capacity
+ * - 'available': below 60% capacity
  */
-export const GIS_SVG_ICONS = {
-  // Evacuation Shelter Marker Pin (Red with shelter house icon)
-  shelterDefault: `
+export function getShelterCapacityStatus(currCapacity: number, maxCapacity: number): 'full' | 'almost' | 'available' {
+  if (maxCapacity <= 0) return 'full';
+  const pct = (currCapacity / maxCapacity) * 100;
+  if (pct >= 90) return 'full';
+  if (pct >= 60) return 'almost';
+  return 'available';
+}
+
+/**
+ * Color palette for shelter capacity status
+ */
+export const SHELTER_STATUS_COLORS = {
+  full: { fill: '#ef4444', shadow: '#ef4444', label: 'FULL' },
+  almost: { fill: '#f97316', shadow: '#f97316', label: 'ALMOST FULL' },
+  available: { fill: '#22c55e', shadow: '#22c55e', label: 'AVAILABLE' },
+} as const;
+
+/**
+ * Build a shelter SVG icon with status-based color coding
+ */
+export function buildShelterIcon(status: 'full' | 'almost' | 'available'): string {
+  const { fill } = SHELTER_STATUS_COLORS[status];
+  return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="28" height="37">
       <defs>
-        <filter id="pin-shadow" x="-20%" y="-10%" width="140%" height="130%">
+        <filter id="pin-shadow-${status}" x="-20%" y="-10%" width="140%" height="130%">
           <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.5"/>
         </filter>
       </defs>
-      <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z" 
-            fill="#e11d48" stroke="#ffffff" stroke-width="1.8" filter="url(#pin-shadow)"/>
+      <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z"
+            fill="${fill}" stroke="#ffffff" stroke-width="1.8" filter="url(#pin-shadow-${status})"/>
       <circle cx="16" cy="15" r="7.5" fill="#ffffff"/>
-      <path d="M16 10.5 L11 14.5 L12 14.5 L12 18.5 L14.5 18.5 L14.5 16 L17.5 16 L17.5 18.5 L20 18.5 L20 14.5 L21 14.5 Z" 
-            fill="#e11d48"/>
+      <path d="M16 10.5 L11 14.5 L12 14.5 L12 18.5 L14.5 18.5 L14.5 16 L17.5 16 L17.5 18.5 L20 18.5 L20 14.5 L21 14.5 Z"
+            fill="${fill}"/>
     </svg>
-  `,
+  `;
+}
 
-  // Active / Selected Shelter Marker Pin (With pulse ring)
-  shelterActive: `
+/**
+ * Build an active/selected shelter SVG icon with status-based color coding
+ */
+export function buildActiveShelterIcon(status: 'full' | 'almost' | 'available'): string {
+  const { fill } = SHELTER_STATUS_COLORS[status];
+  return `
     <div class="active-pinpoint-wrapper" style="width: 32px; height: 42px; position: relative;">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="32" height="42" class="active-pinpoint-heartbeat">
         <defs>
-          <filter id="active-shadow" x="-30%" y="-15%" width="160%" height="140%">
-            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#f43f5e" flood-opacity="0.6"/>
+          <filter id="active-shadow-${status}" x="-30%" y="-15%" width="160%" height="140%">
+            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="${fill}" flood-opacity="0.6"/>
           </filter>
         </defs>
-        <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z" 
-              fill="#f43f5e" stroke="#ffffff" stroke-width="2" filter="url(#active-shadow)"/>
+        <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z"
+              fill="${fill}" stroke="#ffffff" stroke-width="2" filter="url(#active-shadow-${status})"/>
         <circle cx="16" cy="15" r="8" fill="#ffffff"/>
-        <path d="M16 10 L10.5 14.5 L11.5 14.5 L11.5 19 L14.5 19 L14.5 16 L17.5 16 L17.5 19 L20.5 19 L20.5 14.5 L21.5 14.5 Z" 
-              fill="#f43f5e"/>
+        <path d="M16 10 L10.5 14.5 L11.5 14.5 L11.5 19 L14.5 19 L14.5 16 L17.5 16 L17.5 19 L20.5 19 L20.5 14.5 L21.5 14.5 Z"
+              fill="${fill}"/>
       </svg>
     </div>
-  `,
+  `;
+}
+
+/**
+ * Self-contained SVG Markers (no external CDN images required)
+ */
+export const GIS_SVG_ICONS = {
+  // Evacuation Shelter Marker Pin (default — legacy, kept for fallback)
+  shelterDefault: buildShelterIcon('available'),
+
+  // Active / Selected Shelter Marker Pin (With pulse ring)
+  shelterActive: buildActiveShelterIcon('available'),
 
   // Pinned location / User marker (Target pinpoint in Cyan)
   userPin: `

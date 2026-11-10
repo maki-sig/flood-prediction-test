@@ -189,6 +189,17 @@ export default function Home() {
     applyPinnedLocation(latlng, "Location pinned. Finding the nearest shelter...");
   }, [applyPinnedLocation]);
 
+  const handleRemovePin = useCallback(() => {
+    setPinnedPosition(null);
+    setCurrentLocation(null);
+    setRouteStart(null);
+    setActiveRoute(null);
+    setRouteSummary(null);
+    setRouteError(null);
+    setLocationStatusMessage(null);
+    setIsPinningLocation(false);
+  }, []);
+
   const recommendFromPinnedMap = useCallback(() => {
     setShowRecommendMenu(false);
     setIsPinningLocation(true);
@@ -898,6 +909,18 @@ export default function Home() {
                         Use My Current Location
                       </button>
                     </div>
+                  )}
+                  {/* Remove Pin button — shown only when a location pin is active */}
+                  {pinnedPosition && (
+                    <button
+                      onClick={handleRemovePin}
+                      className="w-full px-3 py-2 rounded-[4px] border border-rose-500/30 bg-rose-500/10 text-[10px] font-mono uppercase tracking-wider text-rose-400 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Remove Pin
+                    </button>
                   )}
                   {locationStatusMessage && (
                     <div className="w-full rounded-[4px] border border-border-surface bg-bg-crust/70 px-3 py-2 text-[9px] font-mono leading-relaxed text-text-subtext">

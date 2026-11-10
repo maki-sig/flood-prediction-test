@@ -18,6 +18,10 @@ import {
   formatBuildingPopup,
   formatRoadPopup,
   formatWaterwayPopup,
+  getShelterCapacityStatus,
+  SHELTER_STATUS_COLORS,
+  buildShelterIcon,
+  buildActiveShelterIcon,
 } from "../../lib/gis-config";
 
 interface HourlyData {
@@ -48,6 +52,7 @@ interface FloodMapProps {
   onRouteSummaryChange?: (summary: { distanceKm: number; durationMinutes: number } | null) => void;
   onRouteErrorChange?: (message: string | null) => void;
   onLocationPinChange?: (location: [number, number]) => void;
+  onRemovePin?: () => void;
 }
 
 export default function FloodMap({
@@ -69,6 +74,7 @@ export default function FloodMap({
   onRouteSummaryChange,
   onRouteErrorChange,
   onLocationPinChange,
+  onRemovePin,
 }: FloodMapProps) {
   const [mapStyle, setMapStyle] = useState<"theme" | "satellite">(defaultStyle);
   const [layerVisibility, setLayerVisibility] = useState<GisLayerVisibility>(() => ({
@@ -225,12 +231,14 @@ export default function FloodMap({
 
         // 3. Buildings Footprints Layer
         if (isValidFeatureCollection(buildingsRes)) {
+          const isDark = (theme ?? appliedTheme) === "dark";
+          const bs = isDark ? GIS_STYLES.building.dark : GIS_STYLES.building;
           const buildingsLayer = L.geoJSON(buildingsRes, {
             style: () => ({
-              color: GIS_STYLES.building.strokeColor,
-              weight: GIS_STYLES.building.strokeWeight,
-              fillColor: GIS_STYLES.building.fillColor,
-              fillOpacity: GIS_STYLES.building.fillOpacity,
+              color: bs.strokeColor,
+              weight: bs.strokeWeight,
+              fillColor: bs.fillColor,
+              fillOpacity: bs.fillOpacity,
             }),
             onEachFeature: (feature, layer) => {
               if (feature.properties) {
@@ -415,6 +423,20 @@ export default function FloodMap({
     });
   }, [selectedHourDetails, theme, appliedTheme, getProbabilityCategory]);
 
+  // Re-apply building stroke/fill styles when the theme switches so outlines
+  // remain visible on both the dark charcoal basemap and the lighter satellite view.
+  useEffect(() => {
+    if (!buildingsLayerRef.current) return;
+    const isDark = (theme ?? appliedTheme) === "dark";
+    const bs = isDark ? GIS_STYLES.building.dark : GIS_STYLES.building;
+    buildingsLayerRef.current.setStyle({
+      color: bs.strokeColor,
+      weight: bs.strokeWeight,
+      fillColor: bs.fillColor,
+      fillOpacity: bs.fillOpacity,
+    });
+  }, [theme, appliedTheme]);
+
   // Handle Edit Mode zoom & fitBounds transitions
   useEffect(() => {
     if (!mapInstance) return;
@@ -521,54 +543,53 @@ export default function FloodMap({
 
     if (!layerVisibility.shelters) return;
 
-    const defaultShelterIcon = L.divIcon({
-      html: GIS_SVG_ICONS.shelterDefault,
-      className: "gis-shelter-pin",
-      iconSize: [28, 37],
-      iconAnchor: [14, 37],
-      popupAnchor: [0, -34],
-    });
-
-    const activeShelterIcon = L.divIcon({
-      html: GIS_SVG_ICONS.shelterActive,
-      className: "gis-shelter-pin-active",
-      iconSize: [32, 42],
-      iconAnchor: [16, 42],
-      popupAnchor: [0, -38],
-    });
-
     shelterPins.forEach((pin) => {
       try {
+        const shelter = pin.shelter;
+        const maxCap = shelter?.max_capacity ?? 0;
+        const currCap = shelter?.curr_capacity ?? 0;
+        const status = getShelterCapacityStatus(currCap, maxCap);
+        const statusColors = SHELTER_STATUS_COLORS[status];
+
         const isActive = selectedShelterPin && selectedShelterPin.shelter_id === pin.shelter_id;
+
+        const pinIcon = L.divIcon({
+          html: isActive ? buildActiveShelterIcon(status) : buildShelterIcon(status),
+          className: isActive ? "gis-shelter-pin-active" : "gis-shelter-pin",
+          iconSize: isActive ? [32, 42] : [28, 37],
+          iconAnchor: isActive ? [16, 42] : [14, 37],
+          popupAnchor: [0, isActive ? -38 : -34],
+        });
+
         const marker = L.marker([pin.latitude, pin.longitude], {
-          icon: isActive ? activeShelterIcon : defaultShelterIcon,
+          icon: pinIcon,
           zIndexOffset: isActive ? 900 : 500,
         }).addTo(mapInstance);
 
-        const shelter = pin.shelter;
         const name = shelter?.shelter_name || "Designated Evacuation Shelter";
-        const maxCap = shelter?.max_capacity ?? 0;
-        const currCap = shelter?.curr_capacity ?? 0;
         const available = Math.max(0, maxCap - currCap);
         const contact = shelter?.shelter_head?.contact_num || "N/A";
         const contactPerson = shelter?.shelter_head
           ? `${shelter.shelter_head.fname} ${shelter.shelter_head.lname}`
           : "Barangay Disaster Officer";
 
+        const statusDotColor = status === 'full' ? '#ef4444' : status === 'almost' ? '#f97316' : '#22c55e';
+
         const popupHtml = `
-          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.4; color: #f1f5f9; min-width: 190px;">
+          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.4; color: #f1f5f9; min-width: 200px;">
             <div style="font-weight: 700; color: #f43f5e; font-size: 12px; border-bottom: 1px solid #334155; padding-bottom: 4px; margin-bottom: 6px;">
               🏥 ${name}
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
               <span style="color: #94a3b8;">Status:</span>
-              <span style="font-weight: 600; color: ${available > 0 ? "#10b981" : "#ef4444"};">
-                ${available > 0 ? "AVAILABLE" : "FULL"}
+              <span style="display: inline-flex; align-items: center; gap: 5px; font-weight: 700; color: ${statusDotColor};">
+                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${statusDotColor};"></span>
+                ${statusColors.label}
               </span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
               <span style="color: #94a3b8;">Capacity:</span>
-              <span>${currCap} / ${maxCap}</span>
+              <span>${currCap} / ${maxCap} (${available} free)</span>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
               <span style="color: #94a3b8;">Contact:</span>
@@ -646,6 +667,10 @@ export default function FloodMap({
     routeCallbacks.onRouteSummaryChange?.(null);
     routeCallbacks.onRouteErrorChange?.(null);
 
+    // Guard flag: set to true when routeStart is cleared (Remove Pin) or deps change
+    // while the async fetch is still in-flight, so we don't paint stale lines.
+    let cancelled = false;
+
     const runRoute = async () => {
       try {
         let roadPoints: [number, number][] = [];
@@ -658,10 +683,10 @@ export default function FloodMap({
           distanceKm = roadRoute.distanceKm;
           durationMinutes = roadRoute.durationMinutes;
         } catch {
-          // Offline / Local GIS Fallback: use local A* algorithm without external network calls
-          const aStarPoints = buildAStarRoute(routeStart, route.goal);
-          if (aStarPoints && aStarPoints.length > 0) {
-            roadPoints = aStarPoints;
+          // Offline / Local GIS Fallback: reuse the A* path already computed during shelter selection
+          const fallbackPoints = route.path && route.path.length > 1 ? route.path : buildAStarRoute(routeStart, route.goal);
+          if (fallbackPoints && fallbackPoints.length > 0) {
+            roadPoints = fallbackPoints;
             distanceKm = route.distanceKm || 0.45;
             durationMinutes = Math.max(2, Math.round(distanceKm * 14)); // Average walking pace
           } else {
@@ -670,6 +695,9 @@ export default function FloodMap({
             durationMinutes = 6;
           }
         }
+
+        // Abort if pin was removed (or deps changed) while the fetch was in-flight
+        if (cancelled) return;
 
         const routeLine = L.polyline(roadPoints, {
           color: "#f59e0b",
@@ -705,6 +733,7 @@ export default function FloodMap({
         routeCallbacks.onRouteSummaryChange?.(nextSummary);
         routeCallbacks.onRouteErrorChange?.(null);
       } catch (error) {
+        if (cancelled) return;
         const message = error instanceof Error ? error.message : "Unable to calculate route.";
         setRouteError(message);
         setRouteSummary(null);
@@ -714,6 +743,20 @@ export default function FloodMap({
     };
 
     void runRoute();
+
+    // Cleanup: mark as cancelled so any in-flight fetch result is discarded,
+    // then remove any lines/markers that may have been added before cancellation.
+    return () => {
+      cancelled = true;
+      if (routeLineRef.current) {
+        routeLineRef.current.remove();
+        routeLineRef.current = null;
+      }
+      if (routeMarkerRef.current) {
+        routeMarkerRef.current.remove();
+        routeMarkerRef.current = null;
+      }
+    };
   }, [routeStart, shelterPins, mapInstance, routeCallbacks]);
 
   // Observe theme changes
@@ -963,6 +1006,48 @@ export default function FloodMap({
             <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">
               High (&gt;35%)
             </span>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border-surface/60 mt-0.5 pt-1 mb-0.5">
+          <span className="text-text-subtext font-bold text-[7px] md:text-[8px] uppercase tracking-widest">
+            Evacuation Centers
+          </span>
+        </div>
+        <div className="flex flex-col gap-1 md:gap-1.5">
+          {/* Available — green pin */}
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <span className="shrink-0 flex items-end justify-center" style={{ width: 14, height: 18 }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="14" height="18">
+                <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z" fill="#22c55e" stroke="#fff" strokeWidth="2"/>
+                <circle cx="16" cy="15" r="7.5" fill="#fff"/>
+                <path d="M16 10.5 L11 14.5 L12 14.5 L12 18.5 L14.5 18.5 L14.5 16 L17.5 16 L17.5 18.5 L20 18.5 L20 14.5 L21 14.5 Z" fill="#22c55e"/>
+              </svg>
+            </span>
+            <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Available</span>
+          </div>
+          {/* Almost full — orange pin */}
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <span className="shrink-0 flex items-end justify-center" style={{ width: 14, height: 18 }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="14" height="18">
+                <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z" fill="#f97316" stroke="#fff" strokeWidth="2"/>
+                <circle cx="16" cy="15" r="7.5" fill="#fff"/>
+                <path d="M16 10.5 L11 14.5 L12 14.5 L12 18.5 L14.5 18.5 L14.5 16 L17.5 16 L17.5 18.5 L20 18.5 L20 14.5 L21 14.5 Z" fill="#f97316"/>
+              </svg>
+            </span>
+            <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Almost Full</span>
+          </div>
+          {/* Full — red pin */}
+          <div className="flex items-center gap-1.5 md:gap-2">
+            <span className="shrink-0 flex items-end justify-center" style={{ width: 14, height: 18 }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 42" width="14" height="18">
+                <path d="M16 1 C8 1 2 7.2 2 15 C2 24.5 16 41 16 41 C16 41 30 24.5 30 15 C30 7.2 24 1 16 1 Z" fill="#ef4444" stroke="#fff" strokeWidth="2"/>
+                <circle cx="16" cy="15" r="7.5" fill="#fff"/>
+                <path d="M16 10.5 L11 14.5 L12 14.5 L12 18.5 L14.5 18.5 L14.5 16 L17.5 16 L17.5 18.5 L20 18.5 L20 14.5 L21 14.5 Z" fill="#ef4444"/>
+              </svg>
+            </span>
+            <span className="text-[7px] md:text-[8.5px] font-normal text-text-text">Full</span>
           </div>
         </div>
       </div>
