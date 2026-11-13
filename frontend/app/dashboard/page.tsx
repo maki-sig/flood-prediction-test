@@ -154,6 +154,8 @@ export default function Home() {
     setLocationStatusMessage(message);
   }, []);
 
+  /*
+  // Temporarily disabled since current location is not accurate yet
   const handleUseCurrentLocation = useCallback(() => {
     setFindingRoute(true);
     setLocationStatusMessage("Requesting your location...");
@@ -184,6 +186,7 @@ export default function Home() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, [applyPinnedLocation]);
+  */
 
   const handleMapClick = useCallback((latlng: [number, number]) => {
     applyPinnedLocation(latlng, "Location pinned. Finding the nearest shelter...");
@@ -206,10 +209,12 @@ export default function Home() {
     setLocationStatusMessage("Tap the map to place your location pin.");
   }, []);
 
+  /*
   const recommendFromCurrentLocation = useCallback(() => {
     handleUseCurrentLocation();
     setShowRecommendMenu(false);
   }, [handleUseCurrentLocation]);
+  */
 
   // Trigger info panel entrance animation when it mounts or updates pin selection
   useEffect(() => {
@@ -901,12 +906,6 @@ export default function Home() {
                         className="px-3 py-2 rounded-[4px] border border-border-surface bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-text-text transition-colors"
                       >
                         Pin on Map
-                      </button>
-                      <button
-                        onClick={recommendFromCurrentLocation}
-                        className="px-3 py-2 rounded-[4px] border border-primary-blue/30 bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-primary-blue transition-colors"
-                      >
-                        Use My Current Location
                       </button>
                     </div>
                   )}

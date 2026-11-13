@@ -1,4 +1,5 @@
 import type { ShelterPin } from "./evac-actions";
+import { getShelterCapacityStatus } from "./gis-config";
 
 export interface ShelterRecommendationCandidate {
   shelterId: number;
@@ -8,6 +9,7 @@ export interface ShelterRecommendationCandidate {
   availableCapacity: number;
   goal: [number, number];
   score: number;
+  capacityPriority: number;
 }
 
 export type ShelterRoutePlanner = (start: [number, number], goal: [number, number]) => [number, number][];
@@ -40,7 +42,10 @@ function getShelterCapacityInfo(pin: ShelterPin) {
 export function filterAvailableShelters(shelters: ShelterPin[]) {
   return shelters.filter((pin) => {
     const { maxCapacity, currCapacity } = getShelterCapacityInfo(pin);
-    return maxCapacity > currCapacity;
+    // A shelter displayed as FULL (90%+) is not a routing candidate, even if
+    // its raw capacity count has a few spaces left. This keeps routing aligned
+    // with the map's capacity status and reserves those spaces for emergencies.
+    return maxCapacity > currCapacity && getShelterCapacityStatus(currCapacity, maxCapacity) !== "full";
   });
 }
 
@@ -53,10 +58,8 @@ export function buildShelterRecommendations(
     .map((pin) => {
       const goal: [number, number] = [pin.latitude, pin.longitude];
 
-      // Straight-line Haversine distance — used as the primary ranking metric.
-      // This is always geometrically accurate and is NOT affected by A* grid
-      // discretization. Any shelter that passed filterAvailableShelters() already
-      // has at least one free slot, so proximity is the only ranking criterion.
+      // Straight-line Haversine distance — used to choose the nearest shelter
+      // within the same capacity-status group.
       const straightLineKm = haversineDistanceKm(start, goal);
 
       // Build the visual route path (only used for drawing the line on the map)
@@ -72,12 +75,10 @@ export function buildShelterRecommendations(
 
       const { availableCapacity } = getShelterCapacityInfo(pin);
 
-      // Score = pure straight-line distance. No capacity penalty is added here
-      // because filterAvailableShelters() already guarantees every candidate has
-      // remaining capacity. Adding a penalty would cause a closer-but-almost-full
-      // shelter to lose to a farther-but-emptier one, which is incorrect behaviour.
-      // Available capacity is used only as a secondary tie-breaker in the sort below.
-      const score = straightLineKm;
+      const capacityStatus = getShelterCapacityStatus(
+        Number(pin.shelter?.curr_capacity ?? 0),
+        Number(pin.shelter?.max_capacity ?? 0)
+      );
 
       return {
         shelterId: pin.shelter_id,
@@ -86,11 +87,15 @@ export function buildShelterRecommendations(
         distanceKm: pathDistanceKm,
         availableCapacity,
         goal,
-        score,
+        // Nearly full shelters are routed to first so they can be filled
+        // before sending evacuees to shelters with more room.
+        capacityPriority: capacityStatus === "almost" ? 0 : 1,
+        score: straightLineKm,
       };
     })
-    // Primary: nearest first. Secondary: more available capacity breaks ties.
-    .sort((a, b) => a.score - b.score || b.availableCapacity - a.availableCapacity);
+    // Primary: almost-full shelters, then available shelters. Within each
+    // status group, choose the nearest one; capacity breaks exact distance ties.
+    .sort((a, b) => a.capacityPriority - b.capacityPriority || a.score - b.score || b.availableCapacity - a.availableCapacity);
 }
 
 export function selectBestShelterRecommendation(

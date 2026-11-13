@@ -299,6 +299,8 @@ export default function ManageEvacPage() {
     setLocationStatusMessage(message);
   }, []);
 
+  /*
+  // Temporarily disabled since current location is not accurate yet
   const handleUseCurrentLocation = useCallback(() => {
     setFindingRoute(true);
     setLocationStatusMessage("Requesting your location...");
@@ -329,6 +331,7 @@ export default function ManageEvacPage() {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, [applyPinnedLocation]);
+  */
 
   const recommendFromPinnedMap = useCallback(() => {
     setShowRecommendMenu(false);
@@ -336,10 +339,12 @@ export default function ManageEvacPage() {
     setLocationStatusMessage("Tap the map to place your location pin.");
   }, []);
 
+  /*
   const recommendFromCurrentLocation = useCallback(() => {
     handleUseCurrentLocation();
     setShowRecommendMenu(false);
   }, [handleUseCurrentLocation]);
+  */
 
   // Trigger form entrance animation when form mounts
   useEffect(() => {
@@ -1803,12 +1808,6 @@ export default function ManageEvacPage() {
                         className="px-3 py-2 rounded-[4px] border border-border-surface bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-text-text transition-colors"
                       >
                         Pin on Map
-                      </button>
-                      <button
-                        onClick={recommendFromCurrentLocation}
-                        className="px-3 py-2 rounded-[4px] border border-primary-blue/30 bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-primary-blue transition-colors"
-                      >
-                        Use My Current Location
                       </button>
                     </div>
                   )}
