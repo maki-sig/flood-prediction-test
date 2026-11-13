@@ -1,11 +1,14 @@
+import pickle
+from pathlib import Path
+
 import pandas as pd
-import joblib
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 # using classifier to predict if rain causes flood or nah
 
 # loading the features dataset
-ds = pd.read_csv("../data/flood_features.csv")
+project_dir = Path(__file__).resolve().parent.parent
+ds = pd.read_csv(project_dir / "data" / "sorted_training_dataset.csv")
 
 # confirmation by printing no of rows and columns
 print("Data set loaded")
@@ -14,7 +17,14 @@ print(f"No. of columns:\t{len(ds.columns)}\n")
 
 print(ds.head())
 
-x = ds[["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]] # the features
+x = ds[[
+    "street_id",
+    "elevation",
+    "flood_hazard_level",
+    "rain_intensity_1h",
+    "rain_accum_6h",
+    "rain_accum_24h",
+]] # the features
 y = ds["is_flooded"] # the target
 
 # splitting dataset, 1 for training 1 for testing
@@ -42,6 +52,9 @@ print(f"\nTraining the model...")
 
 # training
 model.fit(x_train, y_train)
-joblib.dump(model, "../model/flood_model.pkl")
+model_path = project_dir / "model" / "predict_flood_model.pkl"
+model_path.parent.mkdir(parents=True, exist_ok=True)
+with model_path.open("wb") as model_file:
+    pickle.dump(model, model_file)
 
-print("\nTraining complete, model saved to --> flood_model.pkl")
+print(f"\nTraining complete, model saved to --> {model_path}")
