@@ -13,53 +13,8 @@ const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
 });
 
-interface HourlyData {
-  time: string;
-  hour: number;
-  rain_intensity_1h: number;
-  rain_accum_6h: number;
-  rain_accum_24h: number;
-  probability: number;
-}
-
-interface DailyPredictionBlock {
-  date: string;
-  complete: boolean;
-  summary: {
-    risk_level: string;
-    peak_probability: number;
-    peak_hour: number;
-    average_probability: number;
-    total_precipitation: number;
-  };
-  hourly: HourlyData[];
-}
-
-interface StreetPrediction {
-  street_id: number;
-  street_name: string;
-  elevation: number;
-  flood_hazard_level: number;
-  days: Record<"today" | "tomorrow" | "dayAfterTomorrow", DailyPredictionBlock>;
-}
-interface PredictionResponse {
-  streets: StreetPrediction[];
-  stale: boolean;
-  complete: boolean;
-  location: {
-    latitude: number;
-    longitude: number;
-    elevation: number;
-    timezone: string;
-    timezone_abbreviation: string;
-  };
-  last_updated?: string;
-  days: {
-    today: DailyPredictionBlock;
-    tomorrow: DailyPredictionBlock;
-    dayAfterTomorrow: DailyPredictionBlock;
-  };
-}
+import type { PredictionResponse } from "../../lib/forecast-types";
+import { ForecastOverview, StreetSummary } from "./ForecastOverview";
 
 const NAGA_LAT = "13.6452";
 const NAGA_LON = "123.1938";
@@ -70,7 +25,7 @@ const getProbabilityCategory = (p: number, theme: 'dark' | 'light') => {
   if (pct < 1.0) {
     return {
       label: "Safe",
-      heroLabel: "No Flood Risk",
+      heroLabel: "Minimal Flood Risk",
       colorClass: "text-safe-text border-safe-border bg-safe-bg",
       textColor: "text-safe-text",
       hex: theme === "dark" ? "#a7f3d0" : "#059669"
@@ -118,14 +73,17 @@ const getRainIntensityCategory = (intensity: number) => {
 
 const DASHBOARD_SECTIONS = [
   { id: "overview", label: "Overview & Map" },
-  { id: "forecast-curve", label: "Forecast Workbench" },
+  { id: "forecast-curve", label: "Street details" },
+  { id: "map", label: "Map & shelters" },
 ];
 
 export default function Home() {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [forecastError, setForecastError] = useState<string | null>(null);
+  const fetching = useRef(false);
 
   const [data, setData] = useState<PredictionResponse | null>(null);
-  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
+  const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('today');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
@@ -266,7 +224,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const sectionIds = ["overview", "forecast-curve", "hour-inspector", "logs-timeline"];
+    const sectionIds = ["overview", "forecast-curve", "map"];
     const detect = () => {
       if (isProgrammaticScroll.current) return;
       const subNav = document.getElementById("sub-nav");
@@ -312,7 +270,6 @@ export default function Home() {
   }, []);
 
   const [selectedStreetId, setSelectedStreetId] = useState<number | null>(null);
-  const [streetSearch, setStreetSearch] = useState("");
   const selectedStreet = data?.streets.find(s => s.street_id === selectedStreetId) ?? data?.streets[0];
   // Derive active forecast period data block
   const activeData = useMemo(() => {
@@ -320,7 +277,11 @@ export default function Home() {
   }, [selectedStreet, selectedPeriod]);
 
   // Interactive selected hour index
-  const [selectedHourIdx, setSelectedHourIdx] = useState<number>(12);
+  const [hourSelection, setHourSelection] = useState<{ key: string; hour: number } | null>(null);
+  const selectionKey = `${selectedStreet?.street_id}:${selectedPeriod}`;
+  const defaultHour = activeData?.hourly.find(h => h.hour === activeData.summary.peak_hour)?.hour ?? activeData?.hourly[0]?.hour ?? 0;
+  const selectedHourIdx = hourSelection?.key === selectionKey && activeData?.hourly.some(h => h.hour === hourSelection.hour) ? hourSelection.hour : defaultHour;
+  const setSelectedHourIdx = (hour: number) => setHourSelection({ key: selectionKey, hour });
 
   // Live timer for next forecast sync
   const [timeUntilNextHour, setTimeUntilNextHour] = useState<string>("59:59");
@@ -333,42 +294,43 @@ export default function Home() {
 
   // Fetch prediction function
   const fetchPrediction = useCallback(async () => {
+    if (fetching.current) return;
+    fetching.current = true;
     setLoading(true);
+    setForecastError(null);
     try {
       const url = `/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Server returned error ${res.status}`);
-      }
-      const json: PredictionResponse = await res.json();
-      if ("error" in json) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        throw new Error((json as any).error);
-      }
+      const res = await fetch(url, { signal: AbortSignal.timeout(120000) });
+      const json = await res.json();
+      if (!res.ok || json.error) throw new Error(json.error || `Server returned ${res.status}`);
+      if (!Array.isArray(json.streets) || !json.streets.length) throw new Error("No street forecasts are available yet.");
       setData(json);
       // Default selected hour is the peak risk hour
-      setSelectedHourIdx(json.days[selectedPeriod].summary.peak_hour);
+
       // Format database timestamp in Manila time
       if (json.last_updated) {
         const dateObj = new Date(json.last_updated);
         const formatted = dateObj.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
+          timeZone: "Asia/Manila",
         }) + ", " + dateObj.toLocaleTimeString("en-US", {
           hour: "2-digit",
           minute: "2-digit",
           hour12: true,
-        }) + " PST";
+          timeZone: "Asia/Manila",
+        }) + " PHT";
         setLastUpdated(formatted);
       } else {
         setLastUpdated("N/A");
       }
-    } catch {
-      // Fail silently as error is not used in UI
+    } catch (error) {
+      setForecastError(error instanceof Error ? error.message : "Unable to refresh forecasts.");
     } finally {
+      fetching.current = false;
       setLoading(false);
     }
-  }, [selectedPeriod]);
+  }, []);
 
   // Initial fetch
   useEffect(() => {
@@ -377,7 +339,7 @@ export default function Home() {
       fetchPrediction();
     }, 150);
     return () => clearTimeout(timer);
-  }, []);
+  }, [fetchPrediction]);
 
   // Live countdown timer to the next hour turn (standard open-meteo hourly refresh schedule)
   useEffect(() => {
@@ -403,7 +365,7 @@ export default function Home() {
     calculateCountdown();
     const interval = setInterval(calculateCountdown, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchPrediction]);
 
   // Live clock for Philippine Standard Time (PST)
   useEffect(() => {
@@ -424,7 +386,7 @@ export default function Home() {
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchPrediction]);
 
 
 
@@ -456,28 +418,14 @@ export default function Home() {
     return Math.max(maxVal * 1.1, 10.0);
   }, [activeData]);
 
-  // Calculate Peak Rain Data
-  const peakRainData = useMemo(() => {
-    if (!activeData || !activeData.hourly) return { maxRain: 0, peakHour: 0 };
-    let maxRain = 0;
-    let peakHour = 0;
-    activeData.hourly.forEach((h) => {
-      if (h.rain_intensity_1h >= maxRain) {
-        maxRain = h.rain_intensity_1h;
-        peakHour = h.hour;
-      }
-    });
-    return { maxRain, peakHour };
-  }, [activeData]);
-
   const chartPoints = useMemo(() => {
     if (!activeData || !activeData.hourly) return null;
     const hourly = activeData.hourly;
 
     const xStride = (chartWidth - paddingLeft - paddingRight) / 23;
 
-    return hourly.map((h, i) => {
-      const x = paddingLeft + i * xStride;
+    return hourly.map((h) => {
+      const x = paddingLeft + h.hour * xStride;
       // Precip (left axis)
       const yPrecip = chartHeight - paddingBottom - (h.rain_intensity_1h / maxPrecip) * (chartHeight - paddingTop - paddingBottom);
       // Probability (right axis)
@@ -495,11 +443,7 @@ export default function Home() {
   };
 
   // Overall Risk Category
-  const summaryCategory = useMemo(() => {
-    if (!activeData) return null;
-    const currentTheme = typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
-    return getProbabilityCategory(activeData.summary.peak_probability / 100, currentTheme);
-  }, [activeData]);
+
 
   // Shelter panel renderer â€” extracted from JSX to avoid IIFE parsing issues
   const renderShelterPanel = () => {
@@ -507,7 +451,6 @@ export default function Home() {
     const s = selectedShelterPin.shelter;
     const sh = s?.shelter_head;
     const pct = s ? Math.round((s.curr_capacity / Math.max(s.max_capacity, 1)) * 100) : 0;
-    const isEvacCenter = s?.type === "Evacuation Center";
 
     let capacityColor = "bg-emerald-500";
     let capacityTextColor = "text-emerald-400";
@@ -540,7 +483,7 @@ export default function Home() {
           </h2>
           <button
             onClick={closeShelterInfo}
-            className="text-[9px] font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer transition-colors"
+            className="text-xs font-mono uppercase tracking-widest text-[#f38ba8] hover:text-[#f38ba8]/80 cursor-pointer transition-colors"
           >
             Close
           </button>
@@ -554,13 +497,13 @@ export default function Home() {
               <div className="text-sm font-extrabold text-text-text leading-snug tracking-tight truncate" title={s?.shelter_name ?? ""}>
                 {s?.shelter_name ?? "Unnamed Facility"}
               </div>
-              <div className="text-[10px] font-mono text-text-muted">
+              <div className="text-xs font-mono text-text-muted">
                 {s?.type ?? "Unknown"}
               </div>
             </div>
 
             <div className="flex flex-col gap-1 pt-2 border-t border-border-surface/40">
-              <div className="text-[10px] font-sans text-text-subtext leading-normal">
+              <div className="text-xs font-sans text-text-subtext leading-normal">
                 {(() => {
                   const addressParts = [
                     [
@@ -587,14 +530,14 @@ export default function Home() {
           <div className="bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-2 text-center font-mono">
               <div className="flex flex-col gap-0.5">
-                <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Occupants</span>
+                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Occupants</span>
                 <span className="text-base font-extrabold text-text-text">{s?.curr_capacity ?? 0}</span>
-                <span className="text-[7px] font-sans font-light text-text-muted">Current Load</span>
+                <span className="text-[11px] font-sans font-light text-text-muted">Current Load</span>
               </div>
               <div className="flex flex-col gap-0.5 border-l border-border-surface/40">
-                <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Max Load</span>
+                <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Max Load</span>
                 <span className="text-base font-extrabold text-text-subtext">{s?.max_capacity ?? 0}</span>
-                <span className="text-[7px] font-sans font-light text-text-muted">Limit</span>
+                <span className="text-[11px] font-sans font-light text-text-muted">Limit</span>
               </div>
             </div>
             <div className="space-y-1.5 pt-2 border-t border-border-surface/20">
@@ -604,7 +547,7 @@ export default function Home() {
                   style={{ width: `${Math.min(pct, 100)}%` }}
                 />
               </div>
-              <div className="flex justify-between items-center text-[9px] font-mono">
+              <div className="flex justify-between items-center text-xs font-mono">
                 <span className="text-text-muted">CAPACITY LOAD</span>
                 <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] font-bold border ${capacityTextColor} ${capacityBorderColor} ${capacityBgClass}`}>
                   {`${pct}% ${pct >= 90 ? "FULL" : pct >= 60 ? "HIGH" : "AVAILABLE"}`}
@@ -615,7 +558,7 @@ export default function Home() {
 
           {/* Section 3: Point Person */}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted px-1">Point Person</span>
+            <span className="text-[11px] font-mono tracking-widest uppercase text-text-muted px-1">Point Person</span>
             {sh ? (
               <div className="bg-bg-crust/20 border border-border-surface/40 rounded-[4px] p-3.5 flex flex-col gap-2">
                 <div className="flex flex-col gap-0.5">
@@ -623,7 +566,7 @@ export default function Home() {
                     {[sh.fname, sh.mname, sh.lname].filter(Boolean).join(" ")}
                   </span>
                 </div>
-                <div className="flex gap-4 pt-2 border-t border-border-surface/20 font-mono text-[9px]">
+                <div className="flex gap-4 pt-2 border-t border-border-surface/20 font-mono text-xs">
                   {sh.contact_num && (
                     <a href={`tel:${sh.contact_num}`} className="text-text-subtext hover:text-primary-blue flex items-center gap-1.5 transition-colors cursor-pointer">
                       <svg className="w-3 h-3 text-primary-blue shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -643,7 +586,7 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              <span className="text-[10px] font-mono text-text-muted italic px-1">No point person on record</span>
+              <span className="text-xs font-mono text-text-muted italic px-1">No point person on record</span>
             )}
           </div>
         </div>
@@ -684,7 +627,7 @@ export default function Home() {
         </div>
 
         {/* Live System Indicators & Theme Toggle */}
-        <div className="flex items-center gap-2 md:gap-3 font-mono text-[9px] text-text-subtext">
+        <div className="flex items-center gap-2 md:gap-3 font-mono text-xs text-text-subtext">
           {/* NEXT UPDATE */}
           <div className="flex items-center justify-center gap-1.5 h-7 px-2.5 border border-border-surface bg-bg-crust/50 rounded-[4px] flows-indicator">
             <span className="text-text-subtext font-bold uppercase tracking-wider">NEXT UPDATE IN:</span>
@@ -720,7 +663,7 @@ export default function Home() {
               <button
                 key={sec.id}
                 onClick={() => scrollToDashboardSection(sec.id)}
-                className={`relative px-3 py-1.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer ${activeDashboardSection === sec.id
+                className={`relative min-h-11 px-3 py-1.5 font-mono text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer ${activeDashboardSection === sec.id
                   ? "text-primary-blue"
                   : "text-text-muted hover:text-text-subtext"
                   }`}
@@ -734,276 +677,38 @@ export default function Home() {
           </div>
         </div>
 
-        {/* SECTION 1: Docked Split Viewport Map (Right) & Left Sidebar Analytics (Left) */}
-        <section id="overview" className="relative w-full h-auto md:h-[calc(100vh-110px)] md:min-h-[550px] border-b border-border-surface flex flex-col md:flex-row overflow-hidden bg-bg-base z-10">
-
-          {/* DOCKED SIDEBAR PANEL (Left, height fills map) */}
-          <aside className="w-full md:w-[420px] shrink-0 h-auto md:h-full border-b md:border-b-0 md:border-r border-border-surface bg-bg-mantle p-5 flex flex-col justify-between overflow-y-auto select-none font-sans z-20 flows-sidebar">
-            {renderShelterPanel()}
-
-            {!showShelterInfo && (
-              <div className="flex flex-col gap-4">
-                <div className="flex justify-between items-center border-b border-border-surface pb-2.5">
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
-                    <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    Risk Overview
-                  </h2>
-                  <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">VILLA KARANGAHAN SUBD.</span>
-                </div>
-
-                {data && <div className="flex flex-col gap-2">
-                  <label htmlFor="street-select">Street forecast</label>
-                  <select id="street-select" className="bg-bg-surface text-text-text border rounded p-2" value={selectedStreet?.street_id ?? ""} onChange={e => setSelectedStreetId(Number(e.target.value))}>
-                    {data.streets.map(street => <option key={street.street_id} value={street.street_id}>{street.street_name}</option>)}
-                  </select>
-                  <p className="text-xs">{selectedStreet?.street_name} ? Shared area rainfall, street-specific model inputs. Map boundary shows coverage context.</p>
-                  {(data.stale || !data.complete) && <p role="status" className="text-semantic-yellow">{data.stale ? "Forecast is stale. " : ""}{!data.complete ? "Some street forecasts are incomplete." : ""}</p>}
-                  <input aria-label="Search streets" placeholder="Search streets" value={streetSearch} onChange={e => setStreetSearch(e.target.value)} className="border rounded p-2 bg-bg-surface" />
-                  <div className="max-h-40 overflow-auto">
-                    {data.streets.filter(street => street.street_name.includes(streetSearch.toLowerCase())).map(street => {
-                      const day = street.days[selectedPeriod];
-                      return <button key={street.street_id} onClick={() => setSelectedStreetId(street.street_id)} className="flex justify-between w-full p-2 text-sm" aria-pressed={street.street_id === selectedStreet?.street_id}>
-                        <span>{street.street_name}</span><span>{day.complete ? `${day.summary.peak_probability.toFixed(2)}% ? ${day.summary.risk_level}` : "Incomplete forecast"}</span>
-                      </button>;
-                    })}
-                  </div>
-                </div>}
-                {activeData?.complete && summaryCategory ? (
-                  <div className="flex flex-col gap-3">
-
-                    {/* Timeframe selector tabs */}
-                    <div className="flex flex-col gap-1.5">
-                      <span className="text-[8px] font-mono tracking-widest uppercase text-text-muted">
-                        Forecast Period
-                      </span>
-                      <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
-                        {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
-                          const dateVal = selectedStreet?.days[period]?.date || "";
-                          const formattedDate = dateVal
-                            ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                            : "";
-                          return (
-                            <button
-                              key={period}
-                              onClick={() => setSelectedPeriod(period)}
-                              className={`py-1.5 text-[8px] font-bold font-mono uppercase tracking-wider rounded-[2px] transition-all flex flex-col items-center justify-center cursor-pointer ${selectedPeriod === period
-                                ? "bg-primary-blue text-white"
-                                : "text-text-subtext hover:bg-border-surface/30 hover:text-text-text"
-                                }`}
-                            >
-                              <span className="leading-none">{period === "dayAfterTomorrow" ? "3RD DAY" : period}</span>
-                              <span className={`text-[7px] leading-none mt-0.5 font-light ${selectedPeriod === period ? "text-white/80" : "text-text-muted"}`}>
-                                {formattedDate}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Hero Risk Classification */}
-                    <div className={`rounded-[4px] border p-4 flex items-center justify-between gap-3 ${summaryCategory.colorClass}`}>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[8px] font-mono font-bold uppercase tracking-widest opacity-70">Overall Assessment</span>
-                        <span className="text-xl font-extrabold font-mono tracking-tight leading-none">{summaryCategory.heroLabel}</span>
-                        <span className="text-[10px] font-light opacity-75 mt-0.5">
-                          Peak: {activeData.summary.peak_probability.toFixed(2)}% at {formatHour(activeData.summary.peak_hour)}
-                        </span>
-                      </div>
-                      {(summaryCategory.label === "Safe" || summaryCategory.label === "Low") ? (
-                        <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      ) : (
-                        <svg className="w-8 h-8 opacity-50 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                        </svg>
-                      )}
-                    </div>
-
-                    {/* Core Risk Metrics */}
-                    <div className="grid grid-cols-3 gap-1 bg-bg-crust/20 rounded-[4px] p-4 border border-border-surface/40 font-mono text-center">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Peak Rain</span>
-                        <span className="text-sm md:text-base font-semibold text-primary-blue">
-                          {peakRainData.maxRain.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm/h</span>
-                        </span>
-                        <span className="text-[8px] font-sans font-light text-text-muted">{formatHour(peakRainData.peakHour)} Peak</span>
-                      </div>
-                      <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                        <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Daily Total</span>
-                        <span className="text-sm md:text-base font-semibold text-text-text">
-                          {activeData.summary.total_precipitation.toFixed(2)}<span className="text-[9px] text-text-muted font-normal"> mm</span>
-                        </span>
-                        <span className="text-[8px] font-sans font-light text-text-muted">00:00-23:00</span>
-                      </div>
-                      <div className="flex flex-col gap-1 border-l border-border-surface/40">
-                        <span className="text-[8px] font-bold text-text-muted uppercase tracking-wider">Avg Risk</span>
-                        <span className="text-sm md:text-base font-semibold text-text-subtext">
-                          {activeData.summary.average_probability.toFixed(2)}<span className="text-[9px] text-text-muted font-normal">%</span>
-                        </span>
-                        <span className="text-[8px] font-sans font-light text-text-muted">Mean Prob</span>
-                      </div>
-                    </div>
-
-                    {/* Advisory text */}
-                    <div className="border border-border-surface/85 bg-bg-crust/35 rounded-[4px] p-3 select-text">
-                      <p className="text-[11px] leading-relaxed text-text-subtext">
-                        {activeData.summary.risk_level === "Safe" && "Conditions are currently clear. Telemetry predicts minimal to zero rainfall with no threat of flooding. Have a safe day!"}
-                        {activeData.summary.risk_level === "Low" && "Expect light rainfall. While overall flooding is unlikely, some low-lying streets might experience minor water clogging or puddles. Keep an umbrella handy."}
-                        {activeData.summary.risk_level === "Moderate" && "Noticeable flood risk ahead. Heavy or continuous rainfall is expected. Watch out for localized flooding, avoid clogged drain paths, and consider moving low-level valuables to safety."}
-                        {activeData.summary.risk_level === "High" && "CRITICAL WARNING: High probability of severe flooding in low-lying areas. Avoid traveling through flooded streets, secure properties, and tune in to local emergency alerts immediately."}
-                      </p>
-                    </div>
-
-                    {/* Last Updated */}
-                    <div className="flex gap-1.5 items-center text-[9px] text-text-muted/80 px-1">
-                      <span>Last Updated:</span>
-                      <span className="font-mono text-text-muted font-medium">{lastUpdated || "Syncing..."}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-20 flex flex-col items-center justify-center gap-3">
-                    {loading ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                        <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Synchronizing sensor...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-[10px] font-mono text-[#f38ba8] uppercase tracking-wider">No active sensor link</span>
-                        <button
-                          onClick={() => fetchPrediction()}
-                          className="px-3 py-1.5 bg-bg-crust border border-border-surface hover:bg-border-surface/40 text-text-text text-[9px] font-mono tracking-widest uppercase rounded-[4px] transition-colors"
-                        >
-                          Connect Sensor
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Scroll-down indicators inside the floating sidebar */}
-            <div className="mt-4 flex items-center justify-center gap-1.5 text-[9px] font-mono text-text-muted uppercase tracking-widest shrink-0">
-              <span>Scroll down for timelines</span>
-              <svg className="w-3.5 h-3.5 text-text-muted animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 13l-7 7-7-7m14-6l-7 7-7-7" />
-              </svg>
-            </div>
-          </aside>
-
-          {/* DOCKED MAP PANEL (Right, fills map height) */}
-          <div className="flex-1 h-[400px] md:h-full relative z-10 bg-[#11111b]">
-            <Suspense fallback={
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
-                <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
-                <span className="text-[10px] font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
-              </div>
-            }>
-              <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
-                <div className="pointer-events-auto flex w-[min(92vw,320px)] flex-col items-center gap-2 rounded-[6px] border border-border-surface bg-bg-mantle/90 px-3 py-3 shadow-2xl backdrop-blur-sm">
-                  <button
-                    onClick={() => setShowRecommendMenu((value) => !value)}
-                    style={{ borderColor: "rgba(245, 158, 11, 0.4)", backgroundColor: "var(--bg-mantle)", color: "#f59e0b" }}
-                    className="w-full px-3 py-2 rounded-[4px] border text-[10px] font-mono uppercase tracking-wider transition-colors"
-                  >
-                    {findingRoute ? "Finding shelter..." : "Recommend Shelter"}
-                  </button>
-                  {showRecommendMenu && (
-                    <div className="flex flex-col gap-2 w-full">
-                      <button
-                        onClick={recommendFromPinnedMap}
-                        className="px-3 py-2 rounded-[4px] border border-border-surface bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-text-text transition-colors"
-                      >
-                        Pin on Map
-                      </button>
-                      <button
-                        onClick={recommendFromCurrentLocation}
-                        className="px-3 py-2 rounded-[4px] border border-primary-blue/30 bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-primary-blue transition-colors"
-                      >
-                        Use My Current Location
-                      </button>
-                    </div>
-                  )}
-                  {locationStatusMessage && (
-                    <div className="w-full rounded-[4px] border border-border-surface bg-bg-crust/70 px-3 py-2 text-[9px] font-mono leading-relaxed text-text-subtext">
-                      {locationStatusMessage}
-                    </div>
-                  )}
-                  {activeRoute && (
-                    <div className="w-full max-w-[260px] rounded-[4px] border border-border-surface bg-bg-crust/80 px-3 py-2 text-[10px] font-mono text-text-subtext shadow-lg">
-                      <div className="font-semibold uppercase tracking-wider text-amber-300">Best available shelter</div>
-                      <div>{activeRoute.shelterName}</div>
-                      <div>{activeRoute.distanceKm.toFixed(2)} km away</div>
-                      <div>{activeRoute.availableCapacity} spots free</div>
-                      {routeSummary && (
-                        <>
-                          <div className="mt-2 border-t border-border-surface/60 pt-2 text-[9px] uppercase tracking-wider text-text-muted">
-                            Route details
-                          </div>
-                          <div>{routeSummary.distanceKm.toFixed(1)} km via roads</div>
-                          <div>{Math.round(routeSummary.durationMinutes)} min estimated</div>
-                        </>
-                      )}
-                      {routeError && (
-                        <div className="mt-2 border-t border-border-surface/60 pt-2 text-[9px] text-amber-400">{routeError}</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <FloodMap
-                data={data}
-                theme={appliedTheme}
-                selectedHourDetails={selectedHourDetails}
-                getProbabilityCategory={getProbabilityCategory}
-                isPinningLocation={isPinningLocation}
-                shelterPins={shelterPins}
-                onPinClick={openShelterInfo}
-                selectedShelterPin={selectedShelterPin}
-                onMapClick={handleMapClick}
-                pinnedPosition={pinnedPosition}
-                routeStart={routeStart}
-                currentLocation={currentLocation}
-                onRouteFound={setActiveRoute}
-                onRouteSummaryChange={setRouteSummary}
-                onRouteErrorChange={setRouteError}
-                onLocationPinChange={setPinnedPosition}
-              />
-            </Suspense>
-          </div>
-
-        </section>
-
+        <ForecastOverview data={data} period={selectedPeriod} onPeriodChange={setSelectedPeriod} selectedStreetId={selectedStreet?.street_id} onSelectStreet={setSelectedStreetId} loading={loading} error={forecastError} lastUpdated={lastUpdated} onRefresh={fetchPrediction} />
+        {selectedStreet && activeData && <StreetSummary street={selectedStreet} day={activeData} />}
         {/* SECTION 2: 24h Forecast Workbench (Chart 8 cols + Inspector 4 cols side-by-side, Log Table below) */}
-        {activeData?.complete && chartPoints && selectedHourDetails && selectedHourCategory && (
+        {!!activeData?.hourly.length && chartPoints && selectedHourDetails && selectedHourCategory && (
           <section id="forecast-curve" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-8 flex flex-col gap-6 z-10 pb-16">
 
+            <label className="flex items-center gap-3 text-sm text-text-subtext">Inspect hour (Manila)
+              <select value={selectedHourIdx} onChange={event => setSelectedHourIdx(Number(event.target.value))} className="min-h-11 rounded-xl border border-border-surface bg-bg-mantle px-4 focus-visible:outline-2 focus-visible:outline-primary-blue">
+                {activeData.hourly.map(hour => <option key={hour.hour} value={hour.hour}>{formatHour(hour.hour)}</option>)}
+              </select>
+            </label>
             {/* Top Row: Dual 12-Column Grid (Chart + Inspector) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
 
               {/* Chart Card (Left, 8 cols) */}
-              <div className="lg:col-span-8 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col justify-between gap-4 flows-card">
+              <div className="lg:col-span-8 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-2xl p-5 flex flex-col justify-between gap-4 flows-card">
                 <div className="flex justify-between items-center flex-wrap gap-4 pb-1">
                   <div>
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
                       <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
                       </svg>
-                      24-Hour Forecast Curve
+                      {selectedStreet?.street_name} ? Hourly forecast
                     </h2>
-                    <p className="text-[10px] font-light text-text-muted mt-0.5">
+                    <p className="text-xs font-light text-text-muted mt-0.5">
                       <span className="hidden sm:inline">Hover across coordinates to evaluate index factors at targeted timelines</span>
                       <span className="inline sm:hidden">Tap points to view hour predictions</span>
                     </p>
                   </div>
 
                   {/* Chart Legend */}
-                  <div className="flex gap-4 font-mono text-[9px] text-text-subtext uppercase tracking-wider">
+                  <div className="flex gap-4 font-mono text-xs text-text-subtext uppercase tracking-wider">
                     <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-none bg-primary-blue inline-block" />
                       Rain Intensity (mm/h)
@@ -1048,7 +753,7 @@ export default function Home() {
                           key={`y-left-${ratio}`}
                           x={paddingLeft - 8}
                           y={y + 3}
-                          className="text-[10px] md:text-[7.5px] font-mono fill-primary-blue flows-chart-text-left"
+                          className="text-xs md:text-[7.5px] font-mono fill-primary-blue flows-chart-text-left"
                           textAnchor="end"
                         >
                           {value.toFixed(2)}
@@ -1065,7 +770,7 @@ export default function Home() {
                           key={`y-right-${ratio}`}
                           x={chartWidth - paddingRight + 8}
                           y={y + 3}
-                          className="text-[10px] md:text-[7.5px] font-mono fill-[#f38ba8] flows-chart-text-right"
+                          className="text-xs md:text-[7.5px] font-mono fill-[#f38ba8] flows-chart-text-right"
                           textAnchor="start"
                         >
                           {value}%
@@ -1183,7 +888,7 @@ export default function Home() {
               </div>
 
               {/* Live Hour Inspector Card (Right, 4 cols) */}
-              <div className="lg:col-span-4 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col justify-between gap-4 flows-card">
+              <div className="lg:col-span-4 bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-2xl p-5 flex flex-col justify-between gap-4 flows-card">
                 <div>
                   <div className="flex justify-between items-center pb-3 border-b border-border-surface/40 mb-3">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext flex items-center gap-2">
@@ -1193,7 +898,7 @@ export default function Home() {
                       </svg>
                       {formatHour(selectedHourDetails.hour)}
                     </h3>
-                    <span className={`font-mono text-[9px] border text-center px-2 py-0.5 rounded-[2px] uppercase ${selectedHourCategory.colorClass}`}>
+                    <span className={`font-mono text-xs border text-center px-2 py-0.5 rounded-[2px] uppercase ${selectedHourCategory.colorClass}`}>
                       {selectedHourCategory.label}
                     </span>
                   </div>
@@ -1202,11 +907,11 @@ export default function Home() {
                     {/* Rain 1h */}
                     <div className="bg-bg-crust/30 border border-border-surface/40 rounded-[4px] p-3 flex justify-between items-center">
                       <div>
-                        <span className="text-[8px] font-mono font-bold text-text-muted uppercase tracking-wider block">Rainfall (1h)</span>
-                        <span className="text-[9px] font-sans font-light text-text-muted">Rate / Intensity</span>
+                        <span className="text-[11px] font-mono font-bold text-text-muted uppercase tracking-wider block">Rainfall (1h)</span>
+                        <span className="text-xs font-sans font-light text-text-muted">Rate / Intensity</span>
                       </div>
                       <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm/h</span></span>
+                        <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_intensity_1h.toFixed(2)} <span className="text-xs text-text-muted font-normal">mm/h</span></span>
                         {(() => {
                           const rainCat = getRainIntensityCategory(selectedHourDetails.rain_intensity_1h);
                           return (
@@ -1221,19 +926,19 @@ export default function Home() {
                     {/* 6h Accum */}
                     <div className="bg-bg-crust/30 border border-border-surface/40 rounded-[4px] p-3 flex justify-between items-center">
                       <div>
-                        <span className="text-[8px] font-mono font-bold text-text-muted uppercase tracking-wider block">6h Rolling Accum</span>
-                        <span className="text-[9px] font-sans font-light text-text-muted">Soil Saturation</span>
+                        <span className="text-[11px] font-mono font-bold text-text-muted uppercase tracking-wider block">6h Rolling Accum</span>
+                        <span className="text-xs font-sans font-light text-text-muted">Soil Saturation</span>
                       </div>
-                      <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                      <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_accum_6h.toFixed(2)} <span className="text-xs text-text-muted font-normal">mm</span></span>
                     </div>
 
                     {/* 24h Accum */}
                     <div className="bg-bg-crust/30 border border-border-surface/40 rounded-[4px] p-3 flex justify-between items-center">
                       <div>
-                        <span className="text-[8px] font-mono font-bold text-text-muted uppercase tracking-wider block">24h Rolling Accum</span>
-                        <span className="text-[9px] font-sans font-light text-text-muted">Ground Load</span>
+                        <span className="text-[11px] font-mono font-bold text-text-muted uppercase tracking-wider block">24h Rolling Accum</span>
+                        <span className="text-xs font-sans font-light text-text-muted">Ground Load</span>
                       </div>
-                      <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-[9px] text-text-muted font-normal">mm</span></span>
+                      <span className="text-sm font-semibold font-mono text-text-text">{selectedHourDetails.rain_accum_24h.toFixed(2)} <span className="text-xs text-text-muted font-normal">mm</span></span>
                     </div>
                   </div>
                 </div>
@@ -1241,8 +946,8 @@ export default function Home() {
                 {/* Flood Probability Summary Box */}
                 <div className="mt-3 flex justify-between items-center bg-bg-crust/60 rounded-[4px] p-3 border border-border-surface flows-subbox">
                   <div>
-                    <p className="text-[9px] font-mono font-bold text-text-muted uppercase tracking-widest">Flood Probability</p>
-                    <p className="text-[9px] font-sans font-light text-text-subtext">Model inference output</p>
+                    <p className="text-xs font-mono font-bold text-text-muted uppercase tracking-widest">Flood Probability</p>
+                    <p className="text-xs font-sans font-light text-text-subtext">Model inference output</p>
                   </div>
                   <span className="text-base font-mono font-bold text-text-text">{(selectedHourDetails.probability * 100).toFixed(2)}%</span>
                 </div>
@@ -1251,20 +956,21 @@ export default function Home() {
             </div>
 
             {/* Bottom Row: Detailed Telemetry Log Table */}
-            <div className="bg-bg-mantle/80 md:bg-bg-mantle/40 md:backdrop-blur-md border border-border-surface rounded-[4px] p-5 flex flex-col justify-between flows-card">
+            <details className="bg-bg-mantle border border-border-surface rounded-2xl p-5 flows-card">
+              <summary className="min-h-11 cursor-pointer text-base font-semibold focus-visible:outline-2 focus-visible:outline-primary-blue">Hourly forecast logs</summary>
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-text-subtext mb-4 flex items-center gap-2">
                   <svg className="w-3.5 h-3.5 text-primary-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  Detailed 24-Hour Telemetry Log
+                  Rainfall & flood probability
                 </h3>
 
                 {/* Desktop Table View */}
                 <div className="hidden md:block max-h-[350px] overflow-y-auto overflow-x-auto pr-1 border border-border-surface bg-bg-crust/20 rounded-[4px] flows-subbox">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-border-surface text-text-muted font-mono text-[9px] uppercase tracking-wider bg-bg-mantle sticky top-0 z-10 flows-header">
+                      <tr className="border-b border-border-surface text-text-muted font-mono text-xs uppercase tracking-wider bg-bg-mantle sticky top-0 z-10 flows-header">
                         <th className="py-2.5 px-3">Time</th>
                         <th className="py-2.5 px-3">Rain (1h)</th>
                         <th className="py-2.5 px-3">6h Rolling Accum</th>
@@ -1292,7 +998,7 @@ export default function Home() {
                             <td className="py-2.5 px-3">
                               <div className="flex items-center gap-1.5">
                                 <span>{h.rain_intensity_1h.toFixed(2)} mm/h</span>
-                                <span className={`text-[7px] font-mono border px-1 py-0.2 rounded-[2px] uppercase font-bold ${rainCat.colorClass}`}>
+                                <span className={`text-[11px] font-mono border px-1 py-0.2 rounded-[2px] uppercase font-bold ${rainCat.colorClass}`}>
                                   {rainCat.label}
                                 </span>
                               </div>
@@ -1303,7 +1009,7 @@ export default function Home() {
                               {(h.probability * 100).toFixed(2)}%
                             </td>
                             <td className="py-2.5 px-3 text-center md:text-right">
-                              <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[10px] font-bold border ${hrCat.colorClass}`}>
+                              <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-xs font-bold border ${hrCat.colorClass}`}>
                                 {hrCat.label}
                               </span>
                             </td>
@@ -1338,13 +1044,13 @@ export default function Home() {
                             <span className="font-mono text-xs font-bold text-text-text">
                               {formatHour(h.hour)}
                             </span>
-                            <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[8px] font-bold border ${hrCat.colorClass}`}>
+                            <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-[2px] text-[11px] font-bold border ${hrCat.colorClass}`}>
                               {hrCat.label}
                             </span>
                           </div>
 
                           <div className="my-2">
-                            <span className="text-[10px] font-mono text-text-muted uppercase tracking-widest block">
+                            <span className="text-xs font-mono text-text-muted uppercase tracking-widest block">
                               Probability
                             </span>
                             <span className="text-lg font-mono font-black text-text-text">
@@ -1352,7 +1058,7 @@ export default function Home() {
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-1.5 border-t border-border-surface/40 pt-2 font-mono text-[9px]">
+                          <div className="grid grid-cols-3 gap-1.5 border-t border-border-surface/40 pt-2 font-mono text-xs">
                             <div>
                               <span className="text-text-muted block font-sans">Rain (1h)</span>
                               <span className="font-bold text-text-text">{h.rain_intensity_1h.toFixed(2)} mm/h</span>
@@ -1374,20 +1080,104 @@ export default function Home() {
 
               </div>
 
-              <div className="mt-3 font-mono text-[9px] text-text-muted uppercase tracking-wider">
-                *Select timelines to evaluate rolling sensors in depth
+              <div className="mt-3 font-mono text-xs text-text-muted uppercase tracking-wider">
+                Select an hour to inspect rainfall and model probability
               </div>
-            </div>
+            </details>
 
           </section>
         )}
 
 
 
+        <section id="map" className="w-full max-w-7xl mx-auto px-4 md:px-6 py-12">
+          <div className="mb-4"><h2 className="text-xl font-semibold">Map &amp; shelter routes</h2><p className="text-sm text-text-muted mt-1">Villa Karangahan coverage boundary. Street forecasts appear above; this map provides location context.</p></div>
+          {showShelterInfo && <div className="mb-4 rounded-2xl border border-border-surface bg-bg-mantle p-5">{renderShelterPanel()}</div>}
+          <div className="relative h-[520px] overflow-hidden rounded-2xl border border-border-surface">
+            <Suspense fallback={
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#11111b]/95 gap-3">
+                <div className="w-6 h-6 border-2 border-primary-blue border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-mono tracking-widest text-primary-blue uppercase">Loading Cartographic Engine...</span>
+              </div>
+            }>
+              <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
+                <div className="pointer-events-auto flex w-[min(92vw,320px)] flex-col items-center gap-2 rounded-[6px] border border-border-surface bg-bg-mantle/90 px-3 py-3 shadow-2xl backdrop-blur-sm">
+                  <button
+                    onClick={() => setShowRecommendMenu((value) => !value)}
+                    style={{ borderColor: "rgba(245, 158, 11, 0.4)", backgroundColor: "var(--bg-mantle)", color: "#f59e0b" }}
+                    className="w-full min-h-11 px-3 py-2 rounded-xl border text-xs font-mono uppercase tracking-wider transition-colors"
+                  >
+                    {findingRoute ? "Finding shelter..." : "Recommend Shelter"}
+                  </button>
+                  {showRecommendMenu && (
+                    <div className="flex flex-col gap-2 w-full">
+                      <button
+                        onClick={recommendFromPinnedMap}
+                        className="min-h-11 px-3 py-2 rounded-xl border border-border-surface bg-bg-crust/80 text-xs font-mono uppercase tracking-wider text-text-text transition-colors"
+                      >
+                        Pin on Map
+                      </button>
+                      <button
+                        onClick={recommendFromCurrentLocation}
+                        className="min-h-11 px-3 py-2 rounded-xl border border-primary-blue/30 bg-bg-crust/80 text-xs font-mono uppercase tracking-wider text-primary-blue transition-colors"
+                      >
+                        Use My Current Location
+                      </button>
+                    </div>
+                  )}
+                  {locationStatusMessage && (
+                    <div className="w-full rounded-[4px] border border-border-surface bg-bg-crust/70 px-3 py-2 text-xs font-mono leading-relaxed text-text-subtext">
+                      {locationStatusMessage}
+                    </div>
+                  )}
+                  {activeRoute && (
+                    <div className="w-full max-w-[260px] rounded-[4px] border border-border-surface bg-bg-crust/80 px-3 py-2 text-xs font-mono text-text-subtext shadow-lg">
+                      <div className="font-semibold uppercase tracking-wider text-amber-300">Best available shelter</div>
+                      <div>{activeRoute.shelterName}</div>
+                      <div>{activeRoute.distanceKm.toFixed(2)} km away</div>
+                      <div>{activeRoute.availableCapacity} spots free</div>
+                      {routeSummary && (
+                        <>
+                          <div className="mt-2 border-t border-border-surface/60 pt-2 text-xs uppercase tracking-wider text-text-muted">
+                            Route details
+                          </div>
+                          <div>{routeSummary.distanceKm.toFixed(1)} km via roads</div>
+                          <div>{Math.round(routeSummary.durationMinutes)} min estimated</div>
+                        </>
+                      )}
+                      {routeError && (
+                        <div className="mt-2 border-t border-border-surface/60 pt-2 text-xs text-amber-400">{routeError}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <FloodMap
+                data={data}
+                theme={appliedTheme}
+                selectedHourDetails={selectedHourDetails}
+                getProbabilityCategory={getProbabilityCategory}
+                isPinningLocation={isPinningLocation}
+                shelterPins={shelterPins}
+                onPinClick={openShelterInfo}
+                selectedShelterPin={selectedShelterPin}
+                onMapClick={handleMapClick}
+                pinnedPosition={pinnedPosition}
+                routeStart={routeStart}
+                currentLocation={currentLocation}
+                onRouteFound={setActiveRoute}
+                onRouteSummaryChange={setRouteSummary}
+                onRouteErrorChange={setRouteError}
+                onLocationPinChange={setPinnedPosition}
+              />
+            </Suspense>
+          </div>
+        </section>
       </div>
 
       {/* Footer (shared) wrapped to extend background color on mobile bottom navbar overflow */}
       <div className="w-full mt-auto bg-bg-crust pb-16 md:pb-0">
+
         <Footer />
       </div>
 
@@ -1399,7 +1189,7 @@ export default function Home() {
             <button
               key={sec.id}
               onClick={() => scrollToDashboardSection(sec.id)}
-              className={`flex flex-col items-center gap-1 font-mono text-[9px] uppercase tracking-wider transition-colors duration-200 cursor-pointer ${isActive ? "text-primary-blue" : "text-text-muted hover:text-text-subtext"
+              className={`flex flex-col items-center gap-1 font-mono text-xs uppercase tracking-wider transition-colors duration-200 cursor-pointer ${isActive ? "text-primary-blue" : "text-text-muted hover:text-text-subtext"
                 }`}
             >
               {sec.id === "overview" && (
@@ -1412,7 +1202,7 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
                 </svg>
               )}
-              <span className="text-[8px] tracking-tight">{sec.id === "forecast-curve" ? "Workbench" : sec.label.split(" ")[0]}</span>
+              <span className="text-[11px] tracking-tight">{sec.id === "forecast-curve" ? "Workbench" : sec.label.split(" ")[0]}</span>
             </button>
           );
         })}
