@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import L from "leaflet";
+import type { Feature, LineString, MultiLineString } from "geojson";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
 import { findNearestAvailableShelter, buildAStarRoute, type ShelterRouteCandidate } from "../../lib/route-planner";
@@ -215,8 +216,14 @@ export default function FloodMap({
               if (feature.properties) {
                 const roadName = feature.properties.name;
                 if (roadName) {
-                  layer.bindTooltip(roadName, {
-                    sticky: true,
+                  const label = document.createElement("span");
+                  label.className = "gis-road-label-text";
+                  label.textContent = roadName;
+                  layer.bindTooltip(label, {
+                    permanent: true,
+                    direction: "center",
+                    interactive: false,
+                    opacity: 1,
                     className: "gis-road-tooltip",
                   });
                 }
@@ -403,6 +410,79 @@ export default function FloodMap({
       }
     }
   }, [layerVisibility, mapInstance]);
+
+  // Position only street labels; Leaflet continues to own the road geometry.
+  useEffect(() => {
+    if (!mapInstance || !mapReady) return;
+    let frame = 0;
+    const layoutLabels = () => {
+      const roads = roadsLayerRef.current;
+      if (!roads || !mapInstance.hasLayer(roads)) return;
+      const container = mapInstance.getContainer();
+      const viewport = container.getBoundingClientRect();
+      const occupied = Array.from(container.querySelectorAll<HTMLElement>(
+        ".leaflet-marker-icon, .leaflet-popup"
+      )).map((element) => element.getBoundingClientRect());
+      const candidates: { tooltip: L.Tooltip; text: HTMLElement; length: number; point: L.Point; angle: number }[] = [];
+      roads.eachLayer((layer) => {
+        const tooltip = layer.getTooltip();
+        const element = tooltip?.getElement();
+        const text = element?.querySelector<HTMLElement>(".gis-road-label-text");
+        if (!tooltip || !element || !text) return;
+        element.style.visibility = "hidden";
+        const geometry = (layer as L.Layer & { feature?: Feature<LineString | MultiLineString> }).feature?.geometry;
+        if (!geometry || (geometry.type !== "LineString" && geometry.type !== "MultiLineString")) return;
+        const lines = geometry.type === "LineString" ? [geometry.coordinates] : geometry.coordinates;
+        // Use the longest part of a multipart street, centered by distance along it.
+        const projected = lines.map((line) => {
+          const points = line.map(([lng, lat]) => mapInstance.latLngToContainerPoint([lat, lng]));
+          const lengths = points.slice(1).map((point, i) => point.distanceTo(points[i]));
+          return { points, lengths, length: lengths.reduce((sum, length) => sum + length, 0) };
+        }).sort((a, b) => b.length - a.length);
+        const line = projected[0];
+        if (!line || line.length < text.offsetWidth + 12) return;
+        let remaining = line.length / 2;
+        for (let i = 0; i < line.lengths.length; i++) {
+          const length = line.lengths[i];
+          if (remaining > length) { remaining -= length; continue; }
+          if (!length) continue;
+          const start = line.points[i];
+          const delta = line.points[i + 1].subtract(start);
+          const point = start.add(delta.multiplyBy(remaining / length));
+          let angle = Math.atan2(delta.y, delta.x) * 180 / Math.PI;
+          if (angle > 90) angle -= 180;
+          if (angle < -90) angle += 180;
+          // Avoid placing straight text across a bend longer than its local segment.
+          if (length < text.offsetWidth + 8) return;
+          candidates.push({ tooltip, text, length: line.length, point, angle });
+          break;
+        }
+      });
+      const names = new Set<string>();
+      candidates.sort((a, b) => b.length - a.length).forEach(({ tooltip, text, point, angle }) => {
+        if (names.has(text.textContent || "")) return;
+        tooltip.setLatLng(mapInstance.containerPointToLatLng(point));
+        text.style.transform = `rotate(${angle}deg)`;
+        const rect = text.getBoundingClientRect();
+        const padding = 5;
+        if (rect.left < viewport.left || rect.right > viewport.right || rect.top < viewport.top || rect.bottom > viewport.bottom) return;
+        if (occupied.some((other) => rect.left < other.right + padding && rect.right > other.left - padding && rect.top < other.bottom + padding && rect.bottom > other.top - padding)) return;
+        tooltip.getElement()!.style.visibility = "visible";
+        occupied.push(rect);
+        names.add(text.textContent || "");
+      });
+    };
+    const scheduleLayout = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(layoutLabels);
+    };
+    mapInstance.on("move zoom resize layeradd layerremove", scheduleLayout);
+    scheduleLayout();
+    return () => {
+      cancelAnimationFrame(frame);
+      mapInstance.off("move zoom resize layeradd layerremove", scheduleLayout);
+    };
+  }, [mapInstance, mapReady, layerVisibility.roads]);
 
   // Update dynamic flood risk color overlay when prediction hour or theme changes
   useEffect(() => {
@@ -1100,17 +1180,28 @@ export default function FloodMap({
 
         /* Road name tooltip */
         .gis-road-tooltip {
-          background-color: #0f172a !important;
-          color: #cbd5e1 !important;
-          border: 1px solid #334155 !important;
+          pointer-events: none !important;
+          visibility: hidden;
+          background: transparent !important;
+          color: #f1f5f9 !important;
+          border: none !important;
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
-          font-size: 9px !important;
-          border-radius: 3px !important;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3) !important;
-          padding: 2px 6px !important;
+          font-size: 10px !important;
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+        .gis-road-label-text {
+          display: inline-block;
+          white-space: nowrap;
+          font-weight: 600;
+          letter-spacing: 0.3px;
+          line-height: 1.2;
+          transform-origin: center;
+          text-shadow: 0 1px 2px #0f172a, 0 -1px 2px #0f172a, 1px 0 2px #0f172a, -1px 0 2px #0f172a;
         }
         .gis-road-tooltip:before {
-          border-top-color: #0f172a !important;
+          display: none !important;
         }
       `}</style>
     </>
