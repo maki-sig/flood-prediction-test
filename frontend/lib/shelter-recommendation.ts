@@ -1,5 +1,4 @@
 import type { ShelterPin } from "./evac-actions";
-import { getShelterCapacityStatus } from "./gis-config";
 
 export interface ShelterRecommendationCandidate {
   shelterId: number;
@@ -9,7 +8,6 @@ export interface ShelterRecommendationCandidate {
   availableCapacity: number;
   goal: [number, number];
   score: number;
-  capacityPriority: number;
 }
 
 export type ShelterRoutePlanner = (start: [number, number], goal: [number, number]) => [number, number][];
@@ -42,17 +40,17 @@ function getShelterCapacityInfo(pin: ShelterPin) {
 export function filterAvailableShelters(shelters: ShelterPin[]) {
   return shelters.filter((pin) => {
     const { maxCapacity, currCapacity } = getShelterCapacityInfo(pin);
-    // A shelter displayed as FULL (90%+) is not a routing candidate, even if
-    // its raw capacity count has a few spaces left. This keeps routing aligned
-    // with the map's capacity status and reserves those spaces for emergencies.
-    return maxCapacity > currCapacity && getShelterCapacityStatus(currCapacity, maxCapacity) !== "full";
+    // Capacity status is a visual warning; route eligibility uses the actual
+    // occupancy counts so a center remains eligible until its last spot is used.
+    return maxCapacity > 0 && currCapacity >= 0 && currCapacity < maxCapacity;
   });
 }
 
 export function buildShelterRecommendations(
   start: [number, number],
   shelters: ShelterPin[],
-  routePlanner: ShelterRoutePlanner
+  routePlanner: ShelterRoutePlanner,
+  requireReachable = false
 ): ShelterRecommendationCandidate[] {
   return filterAvailableShelters(shelters)
     .map((pin) => {
@@ -64,6 +62,7 @@ export function buildShelterRecommendations(
 
       // Build the visual route path (only used for drawing the line on the map)
       const path = routePlanner(start, goal);
+      if (requireReachable && path.length < 2) return null;
 
       // Traced path length for display — may differ from crow-flies distance
       const pathDistanceKm = path.length > 1
@@ -75,11 +74,6 @@ export function buildShelterRecommendations(
 
       const { availableCapacity } = getShelterCapacityInfo(pin);
 
-      const capacityStatus = getShelterCapacityStatus(
-        Number(pin.shelter?.curr_capacity ?? 0),
-        Number(pin.shelter?.max_capacity ?? 0)
-      );
-
       return {
         shelterId: pin.shelter_id,
         shelterName: pin.shelter?.shelter_name ?? "Shelter",
@@ -87,22 +81,22 @@ export function buildShelterRecommendations(
         distanceKm: pathDistanceKm,
         availableCapacity,
         goal,
-        // Nearly full shelters are routed to first so they can be filled
-        // before sending evacuees to shelters with more room.
-        capacityPriority: capacityStatus === "almost" ? 0 : 1,
-        score: straightLineKm,
+        // Route length decides which shelter is nearest and reachable.
+        // Occupancy must not send someone farther away.
+        score: path.length > 1 ? pathDistanceKm : straightLineKm,
       };
     })
-    // Primary: almost-full shelters, then available shelters. Within each
-    // status group, choose the nearest one; capacity breaks exact distance ties.
-    .sort((a, b) => a.capacityPriority - b.capacityPriority || a.score - b.score || b.availableCapacity - a.availableCapacity);
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+    // The nearest reachable shelter wins; available capacity breaks ties.
+    .sort((a, b) => a.score - b.score || b.availableCapacity - a.availableCapacity);
 }
 
 export function selectBestShelterRecommendation(
   start: [number, number],
   shelters: ShelterPin[],
-  routePlanner: ShelterRoutePlanner
+  routePlanner: ShelterRoutePlanner,
+  requireReachable = false
 ): ShelterRecommendationCandidate | null {
-  const ranked = buildShelterRecommendations(start, shelters, routePlanner);
+  const ranked = buildShelterRecommendations(start, shelters, routePlanner, requireReachable);
   return ranked[0] ?? null;
 }

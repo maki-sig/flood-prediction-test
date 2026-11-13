@@ -4,8 +4,8 @@ import React, { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
-import { findNearestAvailableShelter, buildAStarRoute, type ShelterRouteCandidate } from "../../lib/route-planner";
-import { fetchRoadRoute, type RouteTransportMode } from "../../lib/route-service";
+import { findNearestAvailableShelter, type ShelterRouteCandidate } from "../../lib/route-planner";
+import { buildRoadNetwork } from "../../lib/road-network";
 import {
   GIS_DATA_PATHS,
   GIS_STYLES,
@@ -88,8 +88,6 @@ export default function FloodMap({
   const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [gisLoadStatus, setGisLoadStatus] = useState<string>("Loading local GIS layers...");
-  const [, setRouteSummary] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
-  const [, setRouteError] = useState<string | null>(null);
 
   // Layer references for dynamic updates and visibility toggles
   const boundaryLayerRef = useRef<L.GeoJSON | null>(null);
@@ -198,14 +196,14 @@ export default function FloodMap({
           const roadsLayer = L.geoJSON(roadsRes, {
             style: (feature) => {
               const hway = feature?.properties?.highway;
-              const roadStyle =
-                hway === "tertiary"
-                  ? GIS_STYLES.roads.tertiary
-                  : hway === "footway" || hway === "service"
+              // MODIFIED: The model lacks georeferenced depth and road elevations, so no road can be labeled safe; render passability as unknown.
+              const roadStyle = hway === "tertiary"
+                ? GIS_STYLES.roads.tertiary
+                : hway === "footway" || hway === "service"
                   ? GIS_STYLES.roads.footway
                   : GIS_STYLES.roads.residential;
               return {
-                color: roadStyle.color,
+                color: "#9ca3af",
                 weight: roadStyle.weight,
                 opacity: roadStyle.opacity,
                 dashArray: (roadStyle as any).dashArray,
@@ -277,6 +275,7 @@ export default function FloodMap({
 
           // Dedicated flood risk fill layer
           const floodLayer = L.geoJSON(boundaryRes, {
+            interactive: false,
             style: () => ({
               color: category.hex,
               fillColor: category.hex,
@@ -460,6 +459,25 @@ export default function FloodMap({
     }
   }, [isEditMode, mapInstance]);
 
+  // During location selection, building clicks place the pin at the exact
+  // clicked coordinate instead of opening the building information popup.
+  useEffect(() => {
+    if (!mapReady || !isPinningLocation || !onMapClick || !buildingsLayerRef.current) return;
+    mapInstance?.closePopup();
+    const cleanups: (() => void)[] = [];
+    buildingsLayerRef.current.eachLayer((building) => {
+      const popup = building.getPopup();
+      building.unbindPopup();
+      const pinBuilding = (event: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(event);
+        onMapClick([event.latlng.lat, event.latlng.lng]);
+      };
+      building.on("click", pinBuilding);
+      cleanups.push(() => { building.off("click", pinBuilding); if (popup) building.bindPopup(popup); });
+    });
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [mapReady, mapInstance, isPinningLocation, onMapClick]);
+
   // Map click handling for pinning
   useEffect(() => {
     if (!mapInstance || (!isEditMode && !isPinningLocation)) {
@@ -477,7 +495,7 @@ export default function FloodMap({
       }
     };
 
-    mapInstance.getContainer().style.cursor = pinnedPosition ? "" : "crosshair";
+    mapInstance.getContainer().style.cursor = !pinnedPosition ? "crosshair" : "";
     mapInstance.on("click", handleMapClick);
 
     return () => {
@@ -622,142 +640,59 @@ export default function FloodMap({
     };
   }, [shelterPins, mapInstance, onPinClick, selectedShelterPin, layerVisibility.shelters]);
 
-  // Evacuation Route Calculation & Visualization with Offline A* Fallback
+  // MODIFIED: Build connectivity once from the same street geometry rendered on the map.
+  const roadNetwork = useMemo(() => mapReady && roadsLayerRef.current
+    ? buildRoadNetwork(roadsLayerRef.current.toGeoJSON() as GeoJSON.FeatureCollection)
+    : null, [mapReady]);
+
+  // MODIFIED: Draw street-constrained A* guidance while flood safety remains unverified.
   useEffect(() => {
-    if (!mapInstance || !routeStart || !shelterPins.length) {
-      if (routeLineRef.current) {
-        routeLineRef.current.remove();
-        routeLineRef.current = null;
-      }
-      if (routeMarkerRef.current) {
-        routeMarkerRef.current.remove();
-        routeMarkerRef.current = null;
-      }
-      setRouteSummary(null);
-      setRouteError(null);
+    const clearRoute = () => {
+      routeLineRef.current?.remove();
+      routeLineRef.current = null;
+      routeMarkerRef.current?.remove();
+      routeMarkerRef.current = null;
+    };
+    clearRoute();
+    if (!mapInstance || !routeStart) {
+      routeCallbacks.onRouteFound?.(null);
       routeCallbacks.onRouteSummaryChange?.(null);
       routeCallbacks.onRouteErrorChange?.(null);
       return;
     }
 
-    const route = findNearestAvailableShelter(routeStart, shelterPins);
-    if (routeCallbacks.onRouteFound) {
-      routeCallbacks.onRouteFound(route);
-    }
-
-    if (routeLineRef.current) {
-      routeLineRef.current.remove();
-      routeLineRef.current = null;
-    }
-    if (routeMarkerRef.current) {
-      routeMarkerRef.current.remove();
-      routeMarkerRef.current = null;
-    }
-
+    // MODIFIED: Restore selection by calculated A* distance and existing capacity rules; missing flood data does not hide general route guidance.
+    const route = roadNetwork ? findNearestAvailableShelter(routeStart, shelterPins, [], roadNetwork) : null;
+    routeCallbacks.onRouteFound?.(route);
     if (!route) {
-      setRouteSummary(null);
-      setRouteError("No suitable shelter with available capacity was found.");
       routeCallbacks.onRouteSummaryChange?.(null);
-      routeCallbacks.onRouteErrorChange?.("No suitable shelter with available capacity was found.");
+      routeCallbacks.onRouteErrorChange?.(roadNetwork
+        ? "No connected street route to an evacuation center with available capacity was found."
+        : "Loading street geometry for routing...");
       return;
     }
 
-    setRouteError(null);
-    setRouteSummary(null);
-    routeCallbacks.onRouteSummaryChange?.(null);
-    routeCallbacks.onRouteErrorChange?.(null);
-
-    // Guard flag: set to true when routeStart is cleared (Remove Pin) or deps change
-    // while the async fetch is still in-flight, so we don't paint stale lines.
-    let cancelled = false;
-
-    const runRoute = async () => {
-      try {
-        let roadPoints: [number, number][] = [];
-        let distanceKm = 0;
-        let durationMinutes = 0;
-
-        try {
-          const roadRoute = await fetchRoadRoute(routeStart, route.goal, "foot" as RouteTransportMode);
-          roadPoints = roadRoute.geometry.map(([lat, lon]) => [lat, lon] as [number, number]);
-          distanceKm = roadRoute.distanceKm;
-          durationMinutes = roadRoute.durationMinutes;
-        } catch {
-          // Offline / Local GIS Fallback: reuse the A* path already computed during shelter selection
-          const fallbackPoints = route.path && route.path.length > 1 ? route.path : buildAStarRoute(routeStart, route.goal);
-          if (fallbackPoints && fallbackPoints.length > 0) {
-            roadPoints = fallbackPoints;
-            distanceKm = route.distanceKm || 0.45;
-            durationMinutes = Math.max(2, Math.round(distanceKm * 14)); // Average walking pace
-          } else {
-            roadPoints = [routeStart, route.goal];
-            distanceKm = route.distanceKm || 0.45;
-            durationMinutes = 6;
-          }
-        }
-
-        // Abort if pin was removed (or deps changed) while the fetch was in-flight
-        if (cancelled) return;
-
-        const routeLine = L.polyline(roadPoints, {
-          color: "#f59e0b",
-          weight: 4,
-          opacity: 0.95,
-          lineCap: "round",
-          lineJoin: "round",
-          dashArray: "8, 4",
-        }).addTo(mapInstance);
-        routeLineRef.current = routeLine;
-
-        const destinationIcon = L.divIcon({
-          html: GIS_SVG_ICONS.routeDestination,
-          className: "gis-dest-pin",
-          iconSize: [28, 37],
-          iconAnchor: [14, 37],
-          popupAnchor: [0, -34],
-        });
-
-        const destinationMarker = L.marker(route.goal, { icon: destinationIcon }).addTo(mapInstance);
-        destinationMarker.bindPopup(
-          `<div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #f1f5f9;">
-            <div style="font-weight: 700; color: #10b981; margin-bottom: 2px;">🏁 Evacuation Destination</div>
-            <div>${route.shelterName}</div>
-            <div style="font-size: 10px; color: #94a3b8; margin-top: 4px;">Distance: ${distanceKm.toFixed(2)} km • ~${durationMinutes} mins</div>
-          </div>`,
-          { className: "gis-custom-popup" }
-        );
-        routeMarkerRef.current = destinationMarker;
-
-        const nextSummary = { distanceKm, durationMinutes };
-        setRouteSummary(nextSummary);
-        routeCallbacks.onRouteSummaryChange?.(nextSummary);
-        routeCallbacks.onRouteErrorChange?.(null);
-      } catch (error) {
-        if (cancelled) return;
-        const message = error instanceof Error ? error.message : "Unable to calculate route.";
-        setRouteError(message);
-        setRouteSummary(null);
-        routeCallbacks.onRouteSummaryChange?.(null);
-        routeCallbacks.onRouteErrorChange?.(message);
-      }
-    };
-
-    void runRoute();
-
-    // Cleanup: mark as cancelled so any in-flight fetch result is discarded,
-    // then remove any lines/markers that may have been added before cancellation.
-    return () => {
-      cancelled = true;
-      if (routeLineRef.current) {
-        routeLineRef.current.remove();
-        routeLineRef.current = null;
-      }
-      if (routeMarkerRef.current) {
-        routeMarkerRef.current.remove();
-        routeMarkerRef.current = null;
-      }
-    };
-  }, [routeStart, shelterPins, mapInstance, routeCallbacks]);
+    const notice = "Route follows streets between the nearest road access points. Access from buildings and flood safety are unverified.";
+    routeCallbacks.onRouteErrorChange?.(notice);
+    routeCallbacks.onRouteSummaryChange?.({
+      distanceKm: route.distanceKm,
+      durationMinutes: Math.max(1, Math.round(route.distanceKm * 14)),
+    });
+    routeLineRef.current = L.polyline(route.path, {
+      color: "#f59e0b", weight: 4, opacity: 0.95,
+      lineCap: "round", lineJoin: "round", dashArray: "8, 4",
+    }).addTo(mapInstance);
+    const destinationIcon = L.divIcon({
+      html: GIS_SVG_ICONS.routeDestination,
+      className: "gis-dest-pin", iconSize: [28, 37], iconAnchor: [14, 37],
+      popupAnchor: [0, -34],
+    });
+    const popup = document.createElement("div");
+    popup.textContent = route.shelterName + " · " + route.distanceKm.toFixed(2) + " km · Flood safety unverified";
+    routeMarkerRef.current = L.marker(route.goal, { icon: destinationIcon })
+      .addTo(mapInstance).bindPopup(popup, { className: "gis-custom-popup" });
+    return clearRoute;
+  }, [routeStart, shelterPins, mapInstance, routeCallbacks, roadNetwork]);
 
   // Observe theme changes
   useEffect(() => {
@@ -1007,6 +942,12 @@ export default function FloodMap({
               High (&gt;35%)
             </span>
           </div>
+        </div>
+
+        {/* MODIFIED: Until flood depth and matching road elevations are available, every road remains explicitly unknown. */}
+        <div className="border-t border-border-surface/60 mt-0.5 pt-1 flex items-center gap-1.5 md:gap-2">
+          <span className="w-2 h-1 md:w-2.5 md:h-1 rounded-sm bg-gray-400 shrink-0" />
+          <span className="text-[7px] md:text-[8.5px] text-text-text">Road status unknown</span>
         </div>
 
         {/* Divider */}

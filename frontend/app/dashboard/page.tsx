@@ -114,6 +114,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const [data, setData] = useState<PredictionResponse | null>(null);
+  const predictionRequestId = useRef(0);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'tomorrow' | 'dayAfterTomorrow'>('tomorrow');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [appliedTheme, setAppliedTheme] = useState<'dark' | 'light'>(() =>
@@ -133,6 +134,8 @@ export default function Home() {
   const [currentLocation, setCurrentLocation] = useState<[number, number] | null>(null);
   const [pinnedPosition, setPinnedPosition] = useState<[number, number] | null>(null);
   const [activeRoute, setActiveRoute] = useState<ShelterRouteCandidate | null>(null);
+  const previousRoute = useRef<ShelterRouteCandidate | null>(null);
+  const [routeChangeMessage, setRouteChangeMessage] = useState("");
   const [routeSummary, setRouteSummary] = useState<{ distanceKm: number; durationMinutes: number } | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [findingRoute, setFindingRoute] = useState(false);
@@ -142,14 +145,21 @@ export default function Home() {
 
   // Fetch saved shelter pins on mount
   useEffect(() => {
-    fetchShelterPins().then(setShelterPins);
+    let active = true;
+    const refresh = async () => {
+      const shelters = await fetchShelterPins();
+      if (active) setShelterPins(shelters);
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15000);
+    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   const applyPinnedLocation = useCallback((location: [number, number], message: string) => {
     setPinnedPosition(location);
     setCurrentLocation(location);
     setRouteStart(location);
-    setShowRecommendMenu(false);
+    setShowRecommendMenu(true);
     setIsPinningLocation(false);
     setLocationStatusMessage(message);
   }, []);
@@ -192,6 +202,14 @@ export default function Home() {
     applyPinnedLocation(latlng, "Location pinned. Finding the nearest shelter...");
   }, [applyPinnedLocation]);
 
+  const handleRouteFound = useCallback((route: ShelterRouteCandidate | null) => {
+    const previous = previousRoute.current;
+    const routeChanged = route && previous && (route.shelterId !== previous.shelterId || JSON.stringify(route.path) !== JSON.stringify(previous.path));
+    if (routeChanged) setRouteChangeMessage("Reassigned because the previous center no longer had available occupancy.");
+    if (route) previousRoute.current = route;
+    setActiveRoute(route);
+  }, []);
+
   const handleRemovePin = useCallback(() => {
     setPinnedPosition(null);
     setCurrentLocation(null);
@@ -204,10 +222,9 @@ export default function Home() {
   }, []);
 
   const recommendFromPinnedMap = useCallback(() => {
-    setShowRecommendMenu(false);
-    setIsPinningLocation(true);
-    setLocationStatusMessage("Tap the map to place your location pin.");
-  }, []);
+    setIsPinningLocation((active) => !active);
+    setLocationStatusMessage(isPinningLocation ? "Location pinning canceled." : "Tap your building, house, or current location on the map to place your pin.");
+  }, [isPinningLocation]);
 
   /*
   const recommendFromCurrentLocation = useCallback(() => {
@@ -336,6 +353,8 @@ export default function Home() {
 
   // Fetch prediction function
   const fetchPrediction = useCallback(async () => {
+    // MODIFIED: Ignore stale overlapping refreshes so an older response cannot replace newer forecast data.
+    const requestId = ++predictionRequestId.current;
     setLoading(true);
     try {
       const url = `/api/predict?latitude=${NAGA_LAT}&longitude=${NAGA_LON}`;
@@ -348,6 +367,7 @@ export default function Home() {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         throw new Error((json as any).error);
       }
+      if (requestId !== predictionRequestId.current) return;
       setData(json);
       // Default selected hour is the peak risk hour
       setSelectedHourIdx(json.days[selectedPeriod].summary.peak_hour);
@@ -367,9 +387,13 @@ export default function Home() {
         setLastUpdated("N/A");
       }
     } catch {
-      // Fail silently as error is not used in UI
+      // MODIFIED: Clear failed forecast data instead of leaving stale predictions visible as current.
+      if (requestId === predictionRequestId.current) {
+        setData(null);
+        setLastUpdated("N/A");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === predictionRequestId.current) setLoading(false);
     }
   }, [selectedPeriod]);
 
@@ -891,24 +915,19 @@ export default function Home() {
               </div>
             }>
               <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
-                <div className="pointer-events-auto flex w-[min(92vw,320px)] flex-col items-center gap-2 rounded-[6px] border border-border-surface bg-bg-mantle/90 px-3 py-3 shadow-2xl backdrop-blur-sm">
-                  <button
-                    onClick={() => setShowRecommendMenu((value) => !value)}
-                    style={{ borderColor: "rgba(245, 158, 11, 0.4)", backgroundColor: "var(--bg-mantle)", color: "#f59e0b" }}
-                    className="w-full px-3 py-2 rounded-[4px] border text-[10px] font-mono uppercase tracking-wider transition-colors"
-                  >
-                    {findingRoute ? "Finding shelter..." : "Recommend Shelter"}
-                  </button>
+                <div className="pointer-events-auto flex w-[min(92vw,340px)] flex-col items-center gap-2 rounded-[6px] border border-border-surface bg-bg-mantle/90 p-2 shadow-2xl backdrop-blur-sm">
+                  <div className="flex w-full gap-2">
+                    <button aria-expanded={showRecommendMenu} aria-controls="shelter-recommendation-panel" onClick={() => { setShowRecommendMenu((open) => !open); setIsPinningLocation(false); }} className={`flex-1 rounded border px-2 py-2 text-[10px] font-mono uppercase ${showRecommendMenu ? "border-amber-400 bg-amber-400/15 text-amber-300" : "border-border-surface text-text-text"}`}>Recommend shelter</button>
+                  </div>
                   {showRecommendMenu && (
-                    <div className="flex flex-col gap-2 w-full">
+                    <div id="shelter-recommendation-panel" className="flex max-h-[min(45vh,360px)] flex-col gap-2 w-full overflow-y-auto border-t border-border-surface/70 p-1 pt-2">
+                      <div className="text-[9px] text-text-subtext">Pin your current location to find the nearest available shelter.</div>
                       <button
                         onClick={recommendFromPinnedMap}
                         className="px-3 py-2 rounded-[4px] border border-border-surface bg-bg-crust/80 text-[10px] font-mono uppercase tracking-wider text-text-text transition-colors"
                       >
-                        Pin on Map
+                        {isPinningLocation ? "Cancel pinning" : pinnedPosition ? "Move location pin" : "Pin my location"}
                       </button>
-                    </div>
-                  )}
                   {/* Remove Pin button — shown only when a location pin is active */}
                   {pinnedPosition && (
                     <button
@@ -929,6 +948,7 @@ export default function Home() {
                   {activeRoute && (
                     <div className="w-full max-w-[260px] rounded-[4px] border border-border-surface bg-bg-crust/80 px-3 py-2 text-[10px] font-mono text-text-subtext shadow-lg">
                       <div className="font-semibold uppercase tracking-wider text-amber-300">Best available shelter</div>
+                      {routeChangeMessage && <div className="text-amber-300">{routeChangeMessage}</div>}
                       <div>{activeRoute.shelterName}</div>
                       <div>{activeRoute.distanceKm.toFixed(2)} km away</div>
                       <div>{activeRoute.availableCapacity} spots free</div>
@@ -946,6 +966,9 @@ export default function Home() {
                       )}
                     </div>
                   )}
+                  {routeError && !activeRoute && <div className="w-full max-w-[260px] rounded border border-rose-500/30 bg-bg-mantle/95 px-3 py-2 text-[9px] font-mono text-rose-300">{routeError}</div>}
+                    </div>
+                  )}
                 </div>
               </div>
               <FloodMap
@@ -961,7 +984,7 @@ export default function Home() {
                 pinnedPosition={pinnedPosition}
                 routeStart={routeStart}
                 currentLocation={currentLocation}
-                onRouteFound={setActiveRoute}
+                onRouteFound={handleRouteFound}
                 onRouteSummaryChange={setRouteSummary}
                 onRouteErrorChange={setRouteError}
                 onLocationPinChange={setPinnedPosition}

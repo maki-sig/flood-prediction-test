@@ -11,6 +11,8 @@ import { createShelterEntry, fetchShelterPins, updateShelterEntry, deleteShelter
 import type { ShelterPin } from "../../lib/evac-actions";
 import type { ShelterRouteCandidate } from "../../lib/route-planner";
 
+interface EvacuationAlert { id: number; reason: string; latitude: number; longitude: number; created_at: string; }
+
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
   ssr: false,
 });
@@ -207,6 +209,7 @@ export default function ManageEvacPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [shelterPins, setShelterPins] = useState<ShelterPin[]>([]);
+  const [evacuationAlerts, setEvacuationAlerts] = useState<EvacuationAlert[]>([]);
   // Selected shelter info panel state
   const [selectedShelterPin, setSelectedShelterPin] = useState<ShelterPin | null>(null);
   const [showShelterInfo, setShowShelterInfo] = useState(false);
@@ -285,9 +288,19 @@ export default function ManageEvacPage() {
     }
   }, [isEditMode, showShelterForm]);
 
-  // Fetch saved shelter pins on mount
+  // Refresh shared shelters and evacuation alerts for the official dashboard.
   useEffect(() => {
-    fetchShelterPins().then(setShelterPins);
+    let active = true;
+    const refresh = async () => {
+      const [shelters, alertResponse] = await Promise.all([
+        fetchShelterPins(), fetch("/api/evacuation-alerts", { cache: "no-store" }).catch(() => null),
+      ]);
+      const alerts = alertResponse?.ok ? (await alertResponse.json()).alerts ?? [] : [];
+      if (active) { setShelterPins(shelters); setEvacuationAlerts(alerts); }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15000);
+    return () => { active = false; window.clearInterval(timer); };
   }, []);
 
   const applyPinnedLocation = useCallback((location: [number, number], message: string) => {
@@ -1794,6 +1807,10 @@ export default function ManageEvacPage() {
             }>
               <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center pointer-events-none">
                 <div className="pointer-events-auto flex w-[min(92vw,320px)] flex-col items-center gap-2 rounded-[6px] border border-border-surface bg-bg-mantle/90 px-3 py-3 shadow-2xl backdrop-blur-sm">
+                  <div className="w-full border-b border-border-surface/70 pb-2">
+                    <div className="mb-1 text-[9px] font-mono uppercase tracking-widest text-rose-300">Evacuation alerts ({evacuationAlerts.length})</div>
+                    {evacuationAlerts.slice(0, 3).map((alert) => <div key={alert.id} className="mb-1 rounded border border-rose-500/20 bg-rose-500/5 px-2 py-1 text-[8px] text-rose-200">{alert.reason}</div>)}
+                  </div>
                   <button
                     onClick={() => setShowRecommendMenu((value) => !value)}
                     style={{ borderColor: "rgba(245, 158, 11, 0.4)", backgroundColor: "var(--bg-mantle)", color: "#f59e0b" }}
