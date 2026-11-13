@@ -24,6 +24,7 @@ interface HourlyData {
 
 interface DailyPredictionBlock {
   date: string;
+  complete: boolean;
   summary: {
     risk_level: string;
     peak_probability: number;
@@ -34,7 +35,17 @@ interface DailyPredictionBlock {
   hourly: HourlyData[];
 }
 
+interface StreetPrediction {
+  street_id: number;
+  street_name: string;
+  elevation: number;
+  flood_hazard_level: number;
+  days: Record<"today" | "tomorrow" | "dayAfterTomorrow", DailyPredictionBlock>;
+}
 interface PredictionResponse {
+  streets: StreetPrediction[];
+  stale: boolean;
+  complete: boolean;
   location: {
     latitude: number;
     longitude: number;
@@ -300,11 +311,13 @@ export default function Home() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const [selectedStreetId, setSelectedStreetId] = useState<number | null>(null);
+  const [streetSearch, setStreetSearch] = useState("");
+  const selectedStreet = data?.streets.find(s => s.street_id === selectedStreetId) ?? data?.streets[0];
   // Derive active forecast period data block
   const activeData = useMemo(() => {
-    if (!data) return null;
-    return data.days[selectedPeriod];
-  }, [data, selectedPeriod]);
+    return selectedStreet?.days[selectedPeriod] ?? null;
+  }, [selectedStreet, selectedPeriod]);
 
   // Interactive selected hour index
   const [selectedHourIdx, setSelectedHourIdx] = useState<number>(12);
@@ -418,7 +431,7 @@ export default function Home() {
   // Selected hour details
   const selectedHourDetails = useMemo(() => {
     if (!activeData || !activeData.hourly || activeData.hourly.length === 0) return null;
-    return activeData.hourly.find((h) => h.hour === selectedHourIdx) || activeData.hourly[12];
+    return activeData.hourly.find((h) => h.hour === selectedHourIdx) || activeData.hourly[0];
   }, [activeData, selectedHourIdx]);
 
   // Selected hour category
@@ -740,7 +753,24 @@ export default function Home() {
                   <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest">VILLA KARANGAHAN SUBD.</span>
                 </div>
 
-                {activeData && summaryCategory ? (
+                {data && <div className="flex flex-col gap-2">
+                  <label htmlFor="street-select">Street forecast</label>
+                  <select id="street-select" className="bg-bg-surface text-text-text border rounded p-2" value={selectedStreet?.street_id ?? ""} onChange={e => setSelectedStreetId(Number(e.target.value))}>
+                    {data.streets.map(street => <option key={street.street_id} value={street.street_id}>{street.street_name}</option>)}
+                  </select>
+                  <p className="text-xs">{selectedStreet?.street_name} ? Shared area rainfall, street-specific model inputs. Map boundary shows coverage context.</p>
+                  {(data.stale || !data.complete) && <p role="status" className="text-semantic-yellow">{data.stale ? "Forecast is stale. " : ""}{!data.complete ? "Some street forecasts are incomplete." : ""}</p>}
+                  <input aria-label="Search streets" placeholder="Search streets" value={streetSearch} onChange={e => setStreetSearch(e.target.value)} className="border rounded p-2 bg-bg-surface" />
+                  <div className="max-h-40 overflow-auto">
+                    {data.streets.filter(street => street.street_name.includes(streetSearch.toLowerCase())).map(street => {
+                      const day = street.days[selectedPeriod];
+                      return <button key={street.street_id} onClick={() => setSelectedStreetId(street.street_id)} className="flex justify-between w-full p-2 text-sm" aria-pressed={street.street_id === selectedStreet?.street_id}>
+                        <span>{street.street_name}</span><span>{day.complete ? `${day.summary.peak_probability.toFixed(2)}% ? ${day.summary.risk_level}` : "Incomplete forecast"}</span>
+                      </button>;
+                    })}
+                  </div>
+                </div>}
+                {activeData?.complete && summaryCategory ? (
                   <div className="flex flex-col gap-3">
 
                     {/* Timeframe selector tabs */}
@@ -750,7 +780,7 @@ export default function Home() {
                       </span>
                       <div className="grid grid-cols-3 gap-0.5 bg-bg-crust/40 border border-border-surface/35 p-0.5 rounded-[4px]">
                         {(["today", "tomorrow", "dayAfterTomorrow"] as const).map((period) => {
-                          const dateVal = data?.days[period]?.date || "";
+                          const dateVal = selectedStreet?.days[period]?.date || "";
                           const formattedDate = dateVal
                             ? new Date(dateVal).toLocaleDateString("en-US", { month: "short", day: "numeric" })
                             : "";
@@ -950,7 +980,7 @@ export default function Home() {
         </section>
 
         {/* SECTION 2: 24h Forecast Workbench (Chart 8 cols + Inspector 4 cols side-by-side, Log Table below) */}
-        {activeData && chartPoints && selectedHourDetails && selectedHourCategory && (
+        {activeData?.complete && chartPoints && selectedHourDetails && selectedHourCategory && (
           <section id="forecast-curve" className="relative w-full max-w-7xl mx-auto px-4 md:px-6 py-8 flex flex-col gap-6 z-10 pb-16">
 
             {/* Top Row: Dual 12-Column Grid (Chart + Inspector) */}

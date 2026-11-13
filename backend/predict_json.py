@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import joblib
-import pandas as pd
+from forecast import MODEL_PATH, feature_frame
 
 def main():
     try:
@@ -15,23 +15,8 @@ def main():
         features_list = json.loads(input_data)
         
         # Load the model
-        model_path = os.path.join(os.path.dirname(__file__), "..", "model", "flood_model.pkl")
-        if not os.path.exists(model_path):
-            print(json.dumps({"error": f"Model not found at {model_path}"}), file=sys.stderr)
-            sys.exit(1)
-            
-        predict_flood = joblib.load(model_path)
-        
-        # Convert features to pandas DataFrame
-        df = pd.DataFrame(features_list)
-        
-        # Ensure correct column ordering
-        cols = ["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]
-        for col in cols:
-            if col not in df.columns:
-                df[col] = 0.0
-                
-        df = df[cols]
+        predict_flood = joblib.load(MODEL_PATH)
+        df = feature_frame(features_list)
         
         # Predict probability of flooding (class 1)
         # [0][1] is probability of flooding for first sample, so we get it for all samples

@@ -1,0 +1,158 @@
+[
+  {
+    "street_id": 1,
+    "street_name": "cypress",
+    "elevation": 7.0,
+    "flood_hazard_level": 0
+  },
+  {
+    "street_id": 2,
+    "street_name": "chico",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 3,
+    "street_name": "pili",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 4,
+    "street_name": "hamoran",
+    "elevation": 8.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 5,
+    "street_name": "apitong",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 6,
+    "street_name": "rimas",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 7,
+    "street_name": "narra",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 8,
+    "street_name": "papua",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 9,
+    "street_name": "lukban",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 10,
+    "street_name": "mahogany",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 11,
+    "street_name": "cacao",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 12,
+    "street_name": "anahaw",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 13,
+    "street_name": "acacia",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 14,
+    "street_name": "kamagong",
+    "elevation": 6.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 15,
+    "street_name": "dita",
+    "elevation": 6.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 16,
+    "street_name": "antipolo",
+    "elevation": 6.0,
+    "flood_hazard_level": 2
+  },
+  {
+    "street_id": 17,
+    "street_name": "lawaan",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 18,
+    "street_name": "yakal",
+    "elevation": 6.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 19,
+    "street_name": "dapdap",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 20,
+    "street_name": "bahi",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 21,
+    "street_name": "banaba",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 22,
+    "street_name": "dapo",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 23,
+    "street_name": "palomaria",
+    "elevation": 7.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 24,
+    "street_name": "talisay",
+    "elevation": 6.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 25,
+    "street_name": "dayap",
+    "elevation": 6.0,
+    "flood_hazard_level": 1
+  },
+  {
+    "street_id": 26,
+    "street_name": "anonang",
+    "elevation": 6.0,
+    "flood_hazard_level": 1
+  }
+]

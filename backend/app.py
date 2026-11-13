@@ -8,26 +8,22 @@ import os
 
 app = FastAPI(title="Flood Prediction API")
 
-# Load model
-# We assume the model file is in the same directory or copied here during deployment
-model_path = os.path.join(os.path.dirname(__file__), "flood_model.pkl")
+from forecast import STREETS, FEATURES, MODEL_PATH, feature_frame, weather_features
 
-# Fallback to root model directory if running locally in the full repo
-if not os.path.exists(model_path):
-    model_path = os.path.join(os.path.dirname(__file__), "..", "model", "flood_model.pkl")
-
-if os.path.exists(model_path):
-    try:
-        model = joblib.load(model_path)
-        print(f"Model loaded successfully from {model_path}")
-    except Exception as e:
-        model = None
-        print(f"Error loading model: {e}")
-else:
+try:
+    model = joblib.load(MODEL_PATH)
+    if list(model.feature_names_in_) != FEATURES:
+        raise ValueError("Model feature schema does not match street inference")
+except Exception as exc:
     model = None
-    print(f"Warning: Model not found at {model_path}")
+    print(f"Model unavailable: {exc}")
+
+@app.get("/streets")
+async def streets():
+    return STREETS
 
 class FeatureItem(BaseModel):
+    street_id: int
     rain_intensity_1h: float
     rain_accum_6h: float
     rain_accum_24h: float
@@ -40,17 +36,17 @@ async def predict(items: List[FeatureItem]):
     try:
         # Convert to DataFrame
         data = [item.dict() for item in items]
-        df = pd.DataFrame(data)
-        
-        # Ensure correct column ordering
-        cols = ["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]
-        df = df[cols]
+        df = feature_frame(data)
         
         # Predict
         probabilities = model.predict_proba(df)
         flood_probs = [float(p[1]) for p in probabilities]
         
         return {"probabilities": flood_probs}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -66,7 +62,7 @@ async def update_predictions(
     import requests
     
     supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
     
     if not supabase_url or not supabase_key:
         raise HTTPException(status_code=500, detail="Supabase environment variables (SUPABASE_URL, SUPABASE_KEY) are not configured.")
@@ -95,8 +91,7 @@ async def update_predictions(
             token = token.strip('\'" ')  # Clean any quotes/spaces from client input
             
         if token != update_secret:
-            # Returning 200 OK so that cronjobs that I configured don't disable the job upon consecutive failures
-            return {"status": "error", "message": "Unauthorized: Invalid secret token."}
+            raise HTTPException(status_code=401, detail="Invalid secret token")
 
     # 2. Temporal Cooldown (45-Minute Rate Limiting)
     if not force:
@@ -107,24 +102,37 @@ async def update_predictions(
                 "Authorization": f"Bearer {supabase_key}"
             }
             params = {
-                "select": "created_at",
+                "select": "created_at,street_id,forecast_time",
                 "order": "created_at.desc",
-                "limit": 1
+                "limit": 3000
             }
-            res = requests.get(f"{supabase_url}/rest/v1/rainfall_prediction_logs", headers=headers, params=params)
-            
-            if res.status_code == 200:
-                last_record_data = res.json()
+            start_filter = pd.Timestamp.now(tz="Asia/Manila").normalize().isoformat()
+            params['forecast_time'] = f'gte.{start_filter}'
+            params['order'] = 'street_id,forecast_time'
+            params['limit'] = 1000
+            last_record_data = []
+            for offset in range(0, 3000, 1000):
+                params['offset'] = offset
+                res = requests.get(f"{supabase_url}/rest/v1/street_prediction_logs", headers=headers, params=params, timeout=30)
+                res.raise_for_status()
+                page = res.json()
+                last_record_data.extend(page)
+                if len(page) < 1000:
+                    break
+            if last_record_data:
                 if last_record_data:
-                    created_at_str = last_record_data[0]["created_at"]
+                    created_at_str = max(r["created_at"] for r in last_record_data)
                     if created_at_str.endswith("Z"):
                         created_at_str = created_at_str.replace("Z", "+00:00")
                     
-                    last_update_time = datetime.fromisoformat(created_at_str)
+                    last_update_time = min(datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")) for r in last_record_data)
                     now_utc = datetime.now(timezone.utc)
                     time_diff = now_utc - last_update_time
                     
-                    if time_diff < timedelta(minutes=45):
+                    start = pd.Timestamp(now_utc).tz_convert("Asia/Manila").normalize()
+                    expected = {(s['street_id'], (start + pd.Timedelta(hours=h)).tz_convert('UTC').isoformat()) for s in STREETS for h in range(72)}
+                    actual = {(r['street_id'], pd.Timestamp(r['forecast_time']).tz_convert('UTC').isoformat()) for r in last_record_data}
+                    if time_diff < timedelta(minutes=45) and expected <= actual:
                         minutes_ago = int(time_diff.total_seconds() / 60)
                         return {
                             "status": "skipped",
@@ -152,45 +160,27 @@ async def update_predictions(
             hourly = body_data.get("hourly", {})
         else:
             print("[Update] Injected payload not found or invalid. Fetching from Open-Meteo API...")
-            open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=GMT&past_days=1&forecast_days=3"
-            weather_response = requests.get(open_meteo_url)
+            open_meteo_url = f"https://api.open-meteo.com/v1/forecast?latitude={latitude}&longitude={longitude}&hourly=precipitation&timezone=GMT&past_days=2&forecast_days=4"
+            weather_response = requests.get(open_meteo_url, timeout=30)
             if weather_response.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Open-Meteo API returned status {weather_response.status_code}")
             weather_data = weather_response.json()
             hourly = weather_data.get("hourly", {})
             
-        times = hourly.get("time", [])
-        precipitation = hourly.get("precipitation", [])
-        
-        if not times or not precipitation:
-            raise HTTPException(status_code=500, detail="Invalid hourly data returned from weather API")
-            
-        # 2. Compute rolling features
-        df = pd.DataFrame({
-            'forecast_time': times,
-            'rain_intensity_1h': precipitation
-        })
-        # Calculate rolling sum
-        df['rain_accum_6h'] = df['rain_intensity_1h'].rolling(window=6, min_periods=1).sum().round(2)
-        df['rain_accum_24h'] = df['rain_intensity_1h'].rolling(window=24, min_periods=1).sum().round(2)
-        
-        # 3. Predict
-        cols = ["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]
-        probabilities = model.predict_proba(df[cols])
-        df['predicted_probability'] = [float(p[1]) for p in probabilities]
-        
-        # 4. Format for Supabase
+        df = weather_features(hourly)
+        now = datetime.now(timezone.utc)
+        local_start = pd.Timestamp(now).tz_convert("Asia/Manila").normalize()
+        df = df[(df.forecast_time >= local_start) & (df.forecast_time < local_start + pd.Timedelta(days=3))]
+        if len(df) != 72:
+            raise ValueError("Weather does not cover three full Manila days")
         records = []
-        for _, row in df.iterrows():
-            records.append({
-                "forecast_time": row['forecast_time'],
-                "rain_intensity_1h": float(row['rain_intensity_1h']),
-                "rain_accum_6h": float(row['rain_accum_6h']),
-                "rain_accum_24h": float(row['rain_accum_24h']),
-                "predicted_probability": float(row['predicted_probability']),
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            
+        for street in STREETS:
+            items = [{**row, 'street_id': street['street_id']} for row in df.to_dict('records')]
+            probabilities = model.predict_proba(feature_frame(items))[:, 1]
+            for row, probability in zip(items, probabilities):
+                records.append({**row, 'forecast_time': row['forecast_time'].isoformat(),
+                                'predicted_probability': float(probability), 'created_at': now.isoformat()})
+
         # 5. Initialize Supabase and Upsert (via direct REST API)
         headers = {
             "apikey": supabase_key,
@@ -199,9 +189,9 @@ async def update_predictions(
             "Prefer": "resolution=merge-duplicates"
         }
         res = requests.post(
-            f"{supabase_url}/rest/v1/rainfall_prediction_logs?on_conflict=forecast_time",
+            f"{supabase_url}/rest/v1/street_prediction_logs?on_conflict=street_id,forecast_time",
             headers=headers,
-            json=records
+            json=records, timeout=30
         )
         if res.status_code not in (200, 201):
             raise Exception(f"Supabase REST upsert failed with status {res.status_code}: {res.text}")
@@ -211,6 +201,10 @@ async def update_predictions(
             "message": f"Successfully fetched, predicted and upserted {len(records)} hourly records into Supabase.",
             "records_updated": len(records)
         }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
