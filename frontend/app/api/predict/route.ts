@@ -21,9 +21,9 @@ function calculateDailyStats(predictions: any[]) {
   avgProb = predictions.length > 0 ? avgProb / predictions.length : 0;
 
   let riskLevel = "Safe";
-  if (peakProb > 0.5) riskLevel = "High";
-  else if (peakProb > 0.2) riskLevel = "Moderate";
-  else if (peakProb > 0.05) riskLevel = "Low";
+  if (peakProb >= 0.35) riskLevel = "High";
+  else if (peakProb >= 0.1) riskLevel = "Moderate";
+  else if (peakProb >= 0.01) riskLevel = "Low";
 
   return {
     summary: {
@@ -75,17 +75,16 @@ function getManilaDateStrings() {
 
 // Helper to fetch records from Supabase
 async function fetchPredictionRecords(startOfToday: string, endOfDayAfterTomorrow: string) {
-  const { data, error } = await supabase
-    .from("rainfall_prediction_logs")
-    .select("*")
-    .gte("forecast_time", startOfToday)
-    .lte("forecast_time", endOfDayAfterTomorrow)
-    .order("forecast_time", { ascending: true });
-
-  if (error) {
-    throw new Error(`Supabase query failed: ${error.message}`);
+  const records = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase.from("street_prediction_logs").select("*")
+      .gte("forecast_time", startOfToday).lte("forecast_time", endOfDayAfterTomorrow)
+      .order("street_id").order("forecast_time").range(offset, offset + 999);
+    if (error) throw new Error(error.message);
+    records.push(...(data || []));
+    if (!data || data.length < 1000) break;
   }
-  return data || [];
+  return records;
 }
 
 // Helper to trigger Python backend synchronization
@@ -100,21 +99,6 @@ async function syncWithBackend(latitude: string, longitude: string, force: boole
     headers["Authorization"] = `Bearer ${updateSecret}`;
   }
 
-  // 1. Fetch weather payload using Vercel IP (resilient proxying)
-  let weatherData = null;
-  try {
-    const openMeteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=precipitation&timezone=GMT&past_days=1&forecast_days=3`;
-    console.log(`[Vercel Fetch] Querying Open-Meteo directly: ${openMeteoUrl}`);
-    const weatherRes = await fetch(openMeteoUrl);
-    if (weatherRes.ok) {
-      weatherData = await weatherRes.json();
-    } else {
-      console.warn(`[Vercel Fetch] Direct Open-Meteo query failed with status ${weatherRes.status}. Falling back to backend direct fetching.`);
-    }
-  } catch (err: any) {
-    console.error("[Vercel Fetch] Failed fetching from Open-Meteo:", err.message);
-  }
-
   const queryParams = new URLSearchParams({ latitude, longitude });
   if (force) queryParams.append("force", "true");
 
@@ -122,10 +106,11 @@ async function syncWithBackend(latitude: string, longitude: string, force: boole
   const response = await fetch(`${backendApiUrl}/update?${queryParams.toString()}`, {
     method: "POST",
     headers,
-    body: weatherData ? JSON.stringify(weatherData) : undefined
+    signal: AbortSignal.timeout(120000)
   });
 
-  if (!response.ok) {
+  const result = await response.json();
+  if (!response.ok || result.status === "error") {
     throw new Error(`Backend update failed with status ${response.status}`);
   }
 }
@@ -147,16 +132,19 @@ export async function GET(request: NextRequest) {
     let dbRecords = forceUpdate ? [] : await fetchPredictionRecords(startOfToday, endOfDayAfterTomorrow);
     
     // 3. Resilient Fallback: Sync with Python backend if data is missing, incomplete, or forced
-    const expectedCount = 72; // 3 days * 24 hours
-    if (dbRecords.length < expectedCount || forceUpdate) {
+    const { data: catalog, error: catalogError } = await supabase.from("prediction_streets").select("*").order("street_id");
+    if (catalogError || !catalog?.length) throw new Error("Street catalog unavailable; apply the database migration");
+    const complete = (rows: typeof dbRecords) => catalog.every(street => new Set(rows.filter(r => r.street_id === street.street_id).map(r => r.forecast_time)).size === 72);
+    const expectedCount = 72 * catalog.length; // 3 days * 24 hours
+    if (!complete(dbRecords) || forceUpdate || dbRecords.some(r => Date.now() - new Date(r.created_at).getTime() > 90 * 60000)) {
       console.log(`[Sync] Triggering background update (Force=${forceUpdate}, Count=${dbRecords.length}/${expectedCount})...`);
       
       try {
         await syncWithBackend(latitude, longitude, forceUpdate);
         // Retry fetching freshly populated data from Supabase
         dbRecords = await fetchPredictionRecords(startOfToday, endOfDayAfterTomorrow);
-      } catch (err: any) {
-        console.error("[Fallback Error] Failed to sync predictions:", err.message);
+      } catch (err: unknown) {
+        console.error("[Fallback Error] Failed to sync predictions:", err instanceof Error ? err.message : String(err));
       }
     }
 
@@ -196,6 +184,7 @@ export async function GET(request: NextRequest) {
       const timeStr = `${sgDate}T${localHH}:00`;
 
       return {
+        street_id: r.street_id,
         time: timeStr,
         hour: sgHour,
         sgDate,
@@ -206,15 +195,14 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // 5. Slice predictions into respective days using resolved Manila calendar dates
-    const todayPredictions = allPredictions.filter((p) => p.sgDate === todayStr);
-    const tomorrowPredictions = allPredictions.filter((p) => p.sgDate === tomorrowStr);
-    const dayAfterTomorrowPredictions = allPredictions.filter((p) => p.sgDate === dayAfterTomorrowStr);
-
-    const todayBlock = calculateDailyStats(todayPredictions);
-    const tomorrowBlock = calculateDailyStats(tomorrowPredictions);
-    const dayAfterTomorrowBlock = calculateDailyStats(dayAfterTomorrowPredictions);
-
+    const streets = catalog.map(street => {
+      const rows = allPredictions.filter(p => p.street_id === street.street_id);
+      const days = Object.fromEntries([["today", todayStr], ["tomorrow", tomorrowStr], ["dayAfterTomorrow", dayAfterTomorrowStr]].map(([key, date]) => {
+        const hourly = rows.filter(p => p.sgDate === date);
+        return [key, {date, ...calculateDailyStats(hourly), complete: hourly.length === 24}];
+      }));
+      return {...street, days};
+    });
     // 6. Return combined 3-day structured payload
     return NextResponse.json({
       location: {
@@ -225,20 +213,10 @@ export async function GET(request: NextRequest) {
         timezone_abbreviation: "PST",
       },
       last_updated: dbRecords[0]?.created_at || null,
-      days: {
-        today: {
-          date: todayStr,
-          ...todayBlock,
-        },
-        tomorrow: {
-          date: tomorrowStr,
-          ...tomorrowBlock,
-        },
-        dayAfterTomorrow: {
-          date: dayAfterTomorrowStr,
-          ...dayAfterTomorrowBlock,
-        },
-      },
+      streets,
+      complete: complete(dbRecords),
+      stale: !dbRecords.length || Date.now() - Math.min(...dbRecords.map(r => new Date(r.created_at).getTime())) > 90 * 60000,
+      days: streets[0].days,
     });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {

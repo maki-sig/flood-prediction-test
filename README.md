@@ -118,3 +118,10 @@ python train.py
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+## Street forecast deployment
+
+Forecasts cover the 26 cataloged Karangahan streets. Open-Meteo area rainfall is shared; the model combines it with each street ID, elevation, and hazard level. Street geometry is not available; the map boundary provides coverage context.
+
+Apply `supabase/migrations/20261113_street_predictions.sql` before deployment. Configure backend `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `UPDATE_SECRET`; configure frontend Supabase credentials, `BACKEND_API_URL`, and the same `UPDATE_SECRET`. Keep the service role key server-side. Deploy `backend/streets.json` and `model/predict_flood_model.pkl` with the backend. Refresh through authenticated POST `/update`, then verify 72 hourly records per street (1,872 total) for three Manila calendar days. Existing area prediction records are preserved.
+
+`POST /predict` and `backend/predict_json.py` accept arrays of `{street_id, rain_intensity_1h, rain_accum_6h, rain_accum_24h}`. Unknown street IDs fail. GET `/streets` returns the catalog. The frontend prediction endpoint returns `streets`, each containing metadata and three daily forecast blocks, plus completeness and staleness flags.

@@ -251,20 +251,15 @@ export default function FloodMap({
     L.control.attribution({ prefix: false }).addTo(map);
 
     // Determine initial color style
-    const t = theme ?? appliedTheme;
-    const category = getProbabilityCategory(
-      selectedHourDetails?.probability || 0,
-      t
-    );
-
     const polygon = L.polygon(VKS_POLYGON_COORDS, {
-      color: category.hex,
-      fillColor: category.hex,
+      color: "#64748b",
+      fillColor: "#64748b",
       fillOpacity: (theme ?? appliedTheme) === "dark" ? 0.18 : 0.14,
       weight: 2,
       opacity: 0.85,
     }).addTo(map);
 
+    polygon.bindTooltip("Villa Karangahan coverage boundary ? choose a street for its forecast");
     polygonRef.current = polygon;
     setMapInstance(map);
 
@@ -333,12 +328,11 @@ export default function FloodMap({
   useEffect(() => {
     if (!selectedHourDetails) return;
     const t = theme ?? appliedTheme;
-    const category = getProbabilityCategory(selectedHourDetails.probability, t);
 
     if (polygonRef.current) {
       polygonRef.current.setStyle({
-        color: category.hex,
-        fillColor: category.hex,
+        color: "#64748b",
+        fillColor: "#64748b",
         fillOpacity: t === "dark" ? 0.18 : 0.14,
         weight: 2,
         opacity: 0.85,

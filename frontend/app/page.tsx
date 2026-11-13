@@ -498,7 +498,7 @@ export default function LandingPage() {
               Flood risk intelligence, delivered hourly.
             </h2>
             <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
-              FloodVisor is an end-to-end predictive analytics platform built for Villa Karangahan Subd., Camarines Sur. It ingests live atmospheric telemetry from Open-Meteo, runs an GBDT gradient-boosted classifier, and surfaces actionable flood probability indices across a 72-hour forecast window.
+              FloodVisor is an end-to-end predictive analytics platform built for Villa Karangahan Subd., Camarines Sur. It ingests live atmospheric telemetry from Open-Meteo, runs an GBDT gradient-boosted classifier, and produces flood probabilities for 26 cataloged streets across a 72-hour forecast window.
             </p>
             <p className="text-sm font-light leading-relaxed" style={{ color: "var(--text-subtext)" }}>
               The system was engineered as a capstone project to bridge academic ML research with real-world disaster preparedness tooling, covering the full pipeline from raw weather API ingestion to an interactive production dashboard.
@@ -680,7 +680,7 @@ export default function LandingPage() {
             Ready to check flood risk?
           </h2>
           <p className="text-sm font-light" style={{ color: "var(--text-subtext)" }}>
-            Open the live dashboard to view real-time ML predictions for Villa Karangahan Subd. powered by the latest Open-Meteo forecast data.
+            Open the live dashboard to compare street-level ML forecasts for Villa Karangahan Subd. powered by the latest Open-Meteo forecast data.
           </p>
           <Link
             href="/dashboard"
