@@ -5,16 +5,15 @@ from datetime import datetime, timezone, timedelta
 import joblib
 import pandas as pd
 import os
+from pathlib import Path
+if __package__:
+    from .street_predictions import load_street_catalog, predict_probabilities, predict_street_forecasts
+else:
+    from street_predictions import load_street_catalog, predict_probabilities, predict_street_forecasts
 
 app = FastAPI(title="Flood Prediction API")
 
-# Load model
-# We assume the model file is in the same directory or copied here during deployment
-model_path = os.path.join(os.path.dirname(__file__), "flood_model.pkl")
-
-# Fallback to root model directory if running locally in the full repo
-if not os.path.exists(model_path):
-    model_path = os.path.join(os.path.dirname(__file__), "..", "model", "flood_model.pkl")
+model_path = str(Path(__file__).resolve().parent.parent / "model" / "predict_flood_model.pkl")
 
 if os.path.exists(model_path):
     try:
@@ -28,6 +27,9 @@ else:
     print(f"Warning: Model not found at {model_path}")
 
 class FeatureItem(BaseModel):
+    street_id: int
+    elevation: float
+    flood_hazard_level: int
     rain_intensity_1h: float
     rain_accum_6h: float
     rain_accum_24h: float
@@ -38,18 +40,8 @@ async def predict(items: List[FeatureItem]):
         raise HTTPException(status_code=500, detail="Model not loaded on server")
     
     try:
-        # Convert to DataFrame
-        data = [item.dict() for item in items]
-        df = pd.DataFrame(data)
-        
-        # Ensure correct column ordering
-        cols = ["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]
-        df = df[cols]
-        
-        # Predict
-        probabilities = model.predict_proba(df)
-        flood_probs = [float(p[1]) for p in probabilities]
-        
+        flood_probs = predict_probabilities(model, [item.dict() for item in items])
+
         return {"probabilities": flood_probs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -66,10 +58,10 @@ async def update_predictions(
     import requests
     
     supabase_url = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-    supabase_key = os.environ.get("SUPABASE_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
     
     if not supabase_url or not supabase_key:
-        raise HTTPException(status_code=500, detail="Supabase environment variables (SUPABASE_URL, SUPABASE_KEY) are not configured.")
+        raise HTTPException(status_code=500, detail="Configure SUPABASE_URL and a server-only SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_KEY).")
 
     # 1. Secret Token Authorization (Security Check)
     update_secret = os.environ.get("UPDATE_SECRET")
@@ -111,7 +103,7 @@ async def update_predictions(
                 "order": "created_at.desc",
                 "limit": 1
             }
-            res = requests.get(f"{supabase_url}/rest/v1/rainfall_prediction_logs", headers=headers, params=params)
+            res = requests.get(f"{supabase_url}/rest/v1/street_flood_predictions", headers=headers, params=params, timeout=30)
             
             if res.status_code == 200:
                 last_record_data = res.json()
@@ -174,10 +166,18 @@ async def update_predictions(
         df['rain_accum_6h'] = df['rain_intensity_1h'].rolling(window=6, min_periods=1).sum().round(2)
         df['rain_accum_24h'] = df['rain_intensity_1h'].rolling(window=24, min_periods=1).sum().round(2)
         
-        # 3. Predict
-        cols = ["rain_intensity_1h", "rain_accum_6h", "rain_accum_24h"]
-        probabilities = model.predict_proba(df[cols])
-        df['predicted_probability'] = [float(p[1]) for p in probabilities]
+        # Reuse the rolling rainfall features above for all catalogued streets.
+        df['forecast_time'] = pd.to_datetime(df['forecast_time'], utc=True).dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        street_records = predict_street_forecasts(model, df)
+        created_at = datetime.now(timezone.utc).isoformat()
+        for record in street_records:
+            record["created_at"] = created_at
+        # Keep the existing dashboard contract: one hourly maximum across streets.
+        maxima = {}
+        for record in street_records:
+            time = record["forecast_time"]
+            maxima[time] = max(maxima.get(time, 0.0), record["predicted_probability"])
+        df['predicted_probability'] = df['forecast_time'].map(maxima)
         
         # 4. Format for Supabase
         records = []
@@ -198,6 +198,12 @@ async def update_predictions(
             "Content-Type": "application/json",
             "Prefer": "resolution=merge-duplicates"
         }
+        street_res = requests.post(
+            f"{supabase_url}/rest/v1/street_flood_predictions?on_conflict=street_id,forecast_time",
+            headers=headers, json=street_records, timeout=30,
+        )
+        if street_res.status_code not in (200, 201):
+            raise Exception(f"Street forecast upsert failed ({street_res.status_code}): {street_res.text}")
         res = requests.post(
             f"{supabase_url}/rest/v1/rainfall_prediction_logs?on_conflict=forecast_time",
             headers=headers,
@@ -209,7 +215,9 @@ async def update_predictions(
         return {
             "status": "success",
             "message": f"Successfully fetched, predicted and upserted {len(records)} hourly records into Supabase.",
-            "records_updated": len(records)
+            "records_updated": len(records),
+            "street_records_updated": len(street_records),
+            "street_count": len(load_street_catalog())
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
