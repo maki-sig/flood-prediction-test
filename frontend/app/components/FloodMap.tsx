@@ -5,8 +5,9 @@ import L from "leaflet";
 import type { Feature, LineString, MultiLineString } from "geojson";
 import "leaflet/dist/leaflet.css";
 import type { ShelterPin } from "../../lib/evac-actions";
+import type { StreetForecast } from "../../lib/road-checker";
 import { findNearestAvailableShelter, type ShelterRouteCandidate } from "../../lib/route-planner";
-import { buildRoadNetwork } from "../../lib/road-network";
+import { checkRoads, ROAD_PROBABILITY_THRESHOLD } from "../../lib/road-checker";
 import {
   GIS_DATA_PATHS,
   GIS_STYLES,
@@ -32,10 +33,12 @@ interface HourlyData {
   rain_accum_6h: number;
   rain_accum_24h: number;
   probability: number;
+  street_forecasts?: StreetForecast[];
 }
 
 interface FloodMapProps {
   data: unknown;
+  roadGeometry?: GeoJSON.FeatureCollection;
   theme?: "dark" | "light";
   selectedHourDetails: HourlyData | null;
   getProbabilityCategory: (p: number, theme: "dark" | "light") => { hex: string; [key: string]: unknown };
@@ -58,6 +61,7 @@ interface FloodMapProps {
 
 export default function FloodMap({
   data,
+  roadGeometry,
   theme,
   selectedHourDetails,
   getProbabilityCategory,
@@ -167,7 +171,7 @@ export default function FloodMap({
         const [boundaryRes, buildingsRes, roadsRes, riversRes] = await Promise.all([
           fetch(GIS_DATA_PATHS.boundary).then((r) => (r.ok ? r.json() : null)),
           fetch(GIS_DATA_PATHS.buildings).then((r) => (r.ok ? r.json() : null)),
-          fetch(GIS_DATA_PATHS.roads).then((r) => (r.ok ? r.json() : null)),
+          roadGeometry ?? fetch(GIS_DATA_PATHS.roads).then((r) => (r.ok ? r.json() : null)),
           fetch(GIS_DATA_PATHS.rivers).then((r) => (r.ok ? r.json() : null)),
         ]);
 
@@ -197,7 +201,7 @@ export default function FloodMap({
           const roadsLayer = L.geoJSON(roadsRes, {
             style: (feature) => {
               const hway = feature?.properties?.highway;
-              // MODIFIED: The model lacks georeferenced depth and road elevations, so no road can be labeled safe; render passability as unknown.
+              // Roads begin unknown until the selected hour supplies street forecasts.
               const roadStyle = hway === "tertiary"
                 ? GIS_STYLES.roads.tertiary
                 : hway === "footway" || hway === "service"
@@ -328,7 +332,7 @@ export default function FloodMap({
       setMapReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, roadGeometry]);
 
   // Handle Local Satellite Raster Layer Toggle (QGIS exported tiles)
   useEffect(() => {
@@ -720,12 +724,32 @@ export default function FloodMap({
     };
   }, [shelterPins, mapInstance, onPinClick, selectedShelterPin, layerVisibility.shelters]);
 
-  // MODIFIED: Build connectivity once from the same street geometry rendered on the map.
-  const roadNetwork = useMemo(() => mapReady && roadsLayerRef.current
-    ? buildRoadNetwork(roadsLayerRef.current.toGeoJSON() as GeoJSON.FeatureCollection)
-    : null, [mapReady]);
+  // Reuse loaded streets and exclude predicted closures; gray roads stay unverified.
+  const checkedRoads = useMemo(() => mapReady && roadsLayerRef.current
+    ? checkRoads(roadsLayerRef.current.toGeoJSON() as GeoJSON.FeatureCollection, selectedHourDetails?.street_forecasts)
+    : null, [mapReady, selectedHourDetails]);
+  const roadNetwork = checkedRoads?.network ?? null;
 
-  // MODIFIED: Draw street-constrained A* guidance while flood safety remains unverified.
+  useEffect(() => {
+    if (!checkedRoads || !roadsLayerRef.current) return;
+    let index = 0;
+    roadsLayerRef.current.eachLayer(layer => {
+      const properties = checkedRoads.roads.features[index++].properties!;
+      (layer as L.Path).setStyle({ color: properties.passability_color });
+      const popup = document.createElement("div");
+      const heading = document.createElement("strong");
+      heading.textContent = String(properties.name ?? "Unnamed road");
+      popup.append(heading, document.createElement("br"));
+      const probability = properties.flood_probability;
+      popup.append(probability === null
+        ? "Flood restriction unknown: no matching street forecast."
+        : `${properties.passability === "not_passable" ? "Not passable" : "Passable"} under probability rule. Flood probability: ${(probability * 100).toFixed(1)}%. Cutoff: ${ROAD_PROBABILITY_THRESHOLD * 100}%.`);
+      popup.append(document.createElement("br"), "Forecast restriction, not observed road conditions.");
+      layer.bindPopup(popup, { className: "gis-custom-popup" });
+    });
+  }, [checkedRoads]);
+
+  // Recompute with the filtered graph whenever the selected forecast changes.
   useEffect(() => {
     const clearRoute = () => {
       routeLineRef.current?.remove();
@@ -741,18 +765,21 @@ export default function FloodMap({
       return;
     }
 
-    // MODIFIED: Restore selection by calculated A* distance and existing capacity rules; missing flood data does not hide general route guidance.
+    // Keep the existing ranking and A* intact; only the supplied graph changes.
     const route = roadNetwork ? findNearestAvailableShelter(routeStart, shelterPins, [], roadNetwork) : null;
     routeCallbacks.onRouteFound?.(route);
     if (!route) {
       routeCallbacks.onRouteSummaryChange?.(null);
       routeCallbacks.onRouteErrorChange?.(roadNetwork
-        ? "No connected street route to an evacuation center with available capacity was found."
+        ? "No connected street route to an evacuation center with available capacity was found. Predicted red streets are excluded."
         : "Loading street geometry for routing...");
       return;
     }
 
-    const notice = "Route follows streets between the nearest road access points. Access from buildings and flood safety are unverified.";
+    const hasUnknownRoads = checkedRoads?.roads.features.some(feature => feature.properties?.passability === "unknown");
+    const notice = hasUnknownRoads
+      ? "General street guidance: roads without forecasts remain unverified. Predicted red streets are avoided; building access and actual road conditions are unverified."
+      : "Route avoids predicted red streets for the selected forecast hour. Building access and actual road conditions are unverified.";
     routeCallbacks.onRouteErrorChange?.(notice);
     routeCallbacks.onRouteSummaryChange?.({
       distanceKm: route.distanceKm,
@@ -768,11 +795,12 @@ export default function FloodMap({
       popupAnchor: [0, -34],
     });
     const popup = document.createElement("div");
-    popup.textContent = route.shelterName + " · " + route.distanceKm.toFixed(2) + " km · Flood safety unverified";
+    popup.textContent = route.shelterName + " · " + route.distanceKm.toFixed(2) + " km · " +
+      (hasUnknownRoads ? "Some street flood statuses unverified" : "Predicted road restrictions applied");
     routeMarkerRef.current = L.marker(route.goal, { icon: destinationIcon })
       .addTo(mapInstance).bindPopup(popup, { className: "gis-custom-popup" });
     return clearRoute;
-  }, [routeStart, shelterPins, mapInstance, routeCallbacks, roadNetwork]);
+  }, [routeStart, shelterPins, mapInstance, routeCallbacks, roadNetwork, checkedRoads]);
 
   // Observe theme changes
   useEffect(() => {
@@ -1024,10 +1052,11 @@ export default function FloodMap({
           </div>
         </div>
 
-        {/* MODIFIED: Until flood depth and matching road elevations are available, every road remains explicitly unknown. */}
-        <div className="border-t border-border-surface/60 mt-0.5 pt-1 flex items-center gap-1.5 md:gap-2">
-          <span className="w-2 h-1 md:w-2.5 md:h-1 rounded-sm bg-gray-400 shrink-0" />
-          <span className="text-[7px] md:text-[8.5px] text-text-text">Road status unknown</span>
+        <div className="border-t border-border-surface/60 mt-0.5 pt-1 text-[7px] md:text-[8.5px] text-text-text">
+          <div className="flex items-center gap-1.5"><span className="w-2 h-1 bg-green-500" />Passable by forecast rule</div>
+          <div className="flex items-center gap-1.5"><span className="w-2 h-1 bg-red-500" />Restricted (≥{ROAD_PROBABILITY_THRESHOLD * 100}%)</div>
+          <div className="flex items-center gap-1.5"><span className="w-2 h-1 bg-gray-400" />Unknown — flood status unverified</div>
+          <div>Predicted restrictions; not observed conditions.</div>
         </div>
 
         {/* Divider */}
@@ -1148,3 +1177,4 @@ export default function FloodMap({
     </>
   );
 }
+

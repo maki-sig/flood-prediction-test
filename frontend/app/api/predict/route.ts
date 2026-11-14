@@ -88,6 +88,23 @@ async function fetchPredictionRecords(startOfToday: string, endOfDayAfterTomorro
   return data || [];
 }
 
+// PostgREST defaults to 1,000 rows; 26 streets over 72 hours need pagination.
+async function fetchStreetRecords(start: string, end: string) {
+  const records: { forecast_time: string; street_id: number; street_name: string; predicted_probability: number }[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await supabase.from("street_flood_predictions")
+      .select("forecast_time,street_id,street_name,predicted_probability")
+      .gte("forecast_time", start).lte("forecast_time", end)
+      .order("forecast_time").order("street_id").range(offset, offset + 499);
+    if (error) {
+      console.error("Street forecasts unavailable:", error.message);
+      return []; // Never manufacture green roads from the barangay probability.
+    }
+    records.push(...(data ?? []));
+    if (!data || data.length < 500) return records;
+  }
+}
+
 // Helper to trigger Python backend synchronization
 async function syncWithBackend(latitude: string, longitude: string, force: boolean) {
   const backendApiUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
@@ -128,6 +145,8 @@ async function syncWithBackend(latitude: string, longitude: string, force: boole
   if (!response.ok) {
     throw new Error(`Backend update failed with status ${response.status}`);
   }
+  const result = await response.json();
+  if (result.status === "error") throw new Error(result.message || "Backend update rejected");
 }
 
 export async function GET(request: NextRequest) {
@@ -145,16 +164,20 @@ export async function GET(request: NextRequest) {
 
     // 2. Fetch predictions from Supabase
     let dbRecords = forceUpdate ? [] : await fetchPredictionRecords(startOfToday, endOfDayAfterTomorrow);
+    let streetRecords = forceUpdate ? [] : await fetchStreetRecords(startOfToday, endOfDayAfterTomorrow);
+    const streetHours = new Set(streetRecords.map(record => Date.parse(record.forecast_time)));
+    const missingStreetHours = dbRecords.some(record => !streetHours.has(Date.parse(record.forecast_time)));
     
     // 3. Resilient Fallback: Sync with Python backend if data is missing, incomplete, or forced
     const expectedCount = 72; // 3 days * 24 hours
-    if (dbRecords.length < expectedCount || forceUpdate) {
+    if (dbRecords.length < expectedCount || missingStreetHours || forceUpdate) {
       console.log(`[Sync] Triggering background update (Force=${forceUpdate}, Count=${dbRecords.length}/${expectedCount})...`);
       
       try {
         await syncWithBackend(latitude, longitude, forceUpdate);
         // Retry fetching freshly populated data from Supabase
         dbRecords = await fetchPredictionRecords(startOfToday, endOfDayAfterTomorrow);
+        streetRecords = await fetchStreetRecords(startOfToday, endOfDayAfterTomorrow);
       } catch (err: any) {
         console.error("[Fallback Error] Failed to sync predictions:", err.message);
       }
@@ -166,6 +189,13 @@ export async function GET(request: NextRequest) {
 
     // 4. Format database records to match expected frontend structure in Manila Time (UTC+8)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const streetForecastsByTime = new Map<number, { street_id: number; street_name: string; probability: number }[]>();
+    for (const record of streetRecords) {
+      const time = Date.parse(record.forecast_time);
+      const forecasts = streetForecastsByTime.get(time) ?? [];
+      forecasts.push({ street_id: record.street_id, street_name: record.street_name, probability: record.predicted_probability });
+      streetForecastsByTime.set(time, forecasts);
+    }
     const allPredictions = dbRecords.map((r: any) => {
       const dateObj = new Date(r.forecast_time);
 
@@ -203,6 +233,7 @@ export async function GET(request: NextRequest) {
         rain_accum_6h: r.rain_accum_6h,
         rain_accum_24h: r.rain_accum_24h,
         probability: parseFloat(r.predicted_probability.toFixed(6)),
+        street_forecasts: streetForecastsByTime.get(dateObj.getTime()) ?? [],
       };
     });
 

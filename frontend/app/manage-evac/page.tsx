@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { createShelterEntry, fetchShelterPins, updateShelterEntry, deleteShelterEntry } from "../../lib/evac-actions";
 import type { ShelterPin } from "../../lib/evac-actions";
+import type { StreetForecast } from "../../lib/road-checker";
 import type { ShelterRouteCandidate } from "../../lib/route-planner";
 
 interface EvacuationAlert { id: number; reason: string; latitude: number; longitude: number; created_at: string; }
@@ -24,6 +25,7 @@ interface HourlyData {
   rain_accum_6h: number;
   rain_accum_24h: number;
   probability: number;
+  street_forecasts?: StreetForecast[];
 }
 
 interface DailyPredictionBlock {

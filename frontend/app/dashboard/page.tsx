@@ -7,6 +7,7 @@ import ThemeToggle from "../../components/ThemeToggle";
 import Link from "next/link";
 import { fetchShelterPins } from "../../lib/evac-actions";
 import type { ShelterPin } from "../../lib/evac-actions";
+import type { StreetForecast } from "../../lib/road-checker";
 import type { ShelterRouteCandidate } from "../../lib/route-planner";
 
 const FloodMap = dynamic(() => import("../components/FloodMap"), {
@@ -20,6 +21,7 @@ interface HourlyData {
   rain_accum_6h: number;
   rain_accum_24h: number;
   probability: number;
+  street_forecasts?: StreetForecast[];
 }
 
 interface DailyPredictionBlock {
